@@ -1,0 +1,31 @@
+{
+  "name": "ts-federation",
+  "version": "0.0.0",
+  "description": "",
+  "main": "",
+  "scripts": {
+    "prettier:fix": "prettier \\\"packages/**/*.{ts,json,md}\\\" -l --write",
+    "prettier:check": "prettier \\\"packages/**/*.{ts,json,md}\\\" -l --check",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TheMontanyes/ts-federation.git"
+  },
+  "author": "Denis Arkhipov",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/TheMontanyes/ts-federation.git/issues"
+  },
+  "homepage": "https://github.com/TheMontanyes/ts-federation.git#readme",
+  "dependencies": {
+    "lodash.merge": "^4.6.2",
+    "typescript": "^5.0.4"
+  },
+  "devDependencies": {
+    "@types/lodash.merge": "^4.6.9",
+    "@types/node": "^20.1.0",
+    "prettier": "^2.8.8"
+  }
+}
