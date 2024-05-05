@@ -57,7 +57,7 @@ const getTsConfig = (pathToTSConfig: string) => {
   } catch (e) {
     console.log(e);
     throw new Error(
-      `ts-federation: [ERROR] Error reading tsconfig.json. Check the specified path or the validity of the file.\n
+      `ts-remote: [ERROR] Error reading tsconfig.json. Check the specified path or the validity of the file.\n
       ${e}`,
     );
   }
@@ -95,7 +95,7 @@ export const getCompilerOptions = (pathToTSConfig?: string): ts.CompilerOptions 
     };
   } catch (e) {
     throw new Error(
-      `ts-federation: [ERROR] Error reading tsconfig.json. Check the specified path or the validity of the file.\n
+      `ts-remote: [ERROR] Error reading tsconfig.json. Check the specified path or the validity of the file.\n
       ${e}`,
     );
   }

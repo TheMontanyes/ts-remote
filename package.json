@@ -1,5 +1,5 @@
 {
-  "name": "ts-federation",
+  "name": "ts-remote",
   "version": "0.0.0",
   "description": "",
   "main": "",
@@ -11,17 +11,17 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/TheMontanyes/ts-federation.git"
+    "url": "git+https://github.com/TheMontanyes/ts-remote.git"
   },
   "author": "Denis Arkhipov",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/TheMontanyes/ts-federation.git/issues"
+    "url": "https://github.com/TheMontanyes/ts-remote.git/issues"
   },
-  "homepage": "https://github.com/TheMontanyes/ts-federation.git#readme",
+  "homepage": "https://github.com/TheMontanyes/ts-remote.git#readme",
   "dependencies": {
     "lodash.merge": "^4.6.2",
-    "typescript": "^5.0.4"
+    "typescript": "^5.4.5"
   },
   "devDependencies": {
     "@types/lodash.merge": "^4.6.9",

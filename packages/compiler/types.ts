@@ -53,10 +53,9 @@ export type ParsedModule = {
 };
 
 type ImportPath = string;
+type ModuleName = string;
 
-type ModuleList = {
-  [moduleName: string]: ImportPath;
-};
+type ModuleList = Record<ModuleName, ImportPath>;
 
 export type CompileOptions = {
   moduleList: ModuleList;
