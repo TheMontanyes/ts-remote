@@ -15,7 +15,7 @@ import {
   isFromStdLib,
   isNodeFromPackage,
   replaceImport,
-} from './helpers';
+} from './lib';
 import {
   printClassDeclarationDefinition,
   printFunctionDeclarationDefinition,
@@ -23,7 +23,7 @@ import {
   printVariableDeclarationDefinition,
 } from './printer';
 
-export const createParser = (typeChecker: ts.TypeChecker, stdTypes: Set<string>) => {
+export const createParser = (typeChecker: ts.TypeChecker, stdLibTypes: Set<string>) => {
   const collectionParsedNodes = new Map<ts.Node, ParsedNode>();
   const searchLinkedNodes = createSearchLinkedNodes(typeChecker);
 
@@ -546,7 +546,7 @@ export const createParser = (typeChecker: ts.TypeChecker, stdTypes: Set<string>)
         const list = collisionsMap.get(parsed.name)!;
         const fileName = parsed.astNode.getSourceFile().fileName;
 
-        if (stdTypes.has(parsed.name)) {
+        if (stdLibTypes.has(parsed.name)) {
           list.add(parsed.name + parsedNode.name);
         }
 

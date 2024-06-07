@@ -3,7 +3,7 @@ import ts from 'typescript';
 import { createParser } from './parser';
 import { CompileOptions } from './types';
 import { printModule } from './printer';
-import { getCompilerOptions, isFromStdLib } from './helpers';
+import { getCompilerOptions, isFromStdLib } from './lib';
 
 const cwd = process.cwd();
 
@@ -33,7 +33,7 @@ export default async function main({
 
   const typeChecker = program.getTypeChecker();
 
-  const stdTypes = program.getSourceFiles().reduce((acc, sourceFile) => {
+  const stdLibTypes = program.getSourceFiles().reduce((acc, sourceFile) => {
     sourceFile.forEachChild((node) => {
       if (
         isFromStdLib(node) &&
@@ -49,7 +49,7 @@ export default async function main({
     return acc;
   }, new Set<string>());
 
-  const parser = createParser(typeChecker, stdTypes);
+  const parser = createParser(typeChecker, stdLibTypes);
 
   let resultSourceCodeDTS = exposeEntries.reduce((acc, [moduleName, fileName]) => {
     const sourceFile = program.getSourceFile(fileName);
