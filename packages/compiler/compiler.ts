@@ -1,7 +1,7 @@
 import path from 'node:path';
 import ts from 'typescript';
 import { createParser } from './parser';
-import { CompileOptions } from './types';
+import { CompilerOptions } from './types';
 import { printModule } from './printer';
 import { getCompilerOptions, isFromStdLib } from './lib';
 
@@ -16,7 +16,7 @@ export default async function main({
   output,
   tsconfig,
   additionalDeclarations = [],
-}: CompileOptions) {
+}: CompilerOptions) {
   const compilerOptions = getCompilerOptions(tsconfig || baseTsConfigPath);
   const exposeEntries = Object.entries(moduleList);
 

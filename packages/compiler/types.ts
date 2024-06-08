@@ -52,12 +52,12 @@ export type ParsedModule = {
   exportDefaultParsedNode?: ParsedNode;
 };
 
-type ImportPath = string;
-type ModuleName = string;
+export type ImportPath = string;
+export type ModuleName = string;
 
-type ModuleList = Record<ModuleName, ImportPath>;
+export type ModuleList = Record<ModuleName, ImportPath>;
 
-export type CompileOptions = {
+export type CompilerOptions = {
   moduleList: ModuleList;
   additionalDeclarations?: string[];
   output: {

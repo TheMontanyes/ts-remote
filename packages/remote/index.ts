@@ -1,1 +1,0 @@
-export { remote } from './loader';

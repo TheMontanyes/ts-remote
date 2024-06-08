@@ -1,13 +1,25 @@
 {
   "name": "ts-remote",
   "version": "0.0.0",
-  "description": "",
-  "main": "",
+  "description": "Remote typescript types for remote js modules",
   "scripts": {
-    "prettier:fix": "prettier \\\"packages/**/*.{ts,json,md}\\\" -l --write",
-    "prettier:check": "prettier \\\"packages/**/*.{ts,json,md}\\\" -l --check",
+    "prettier:fix": "prettier ./packages/**/*.ts -l --write",
+    "prettier:check": "prettier ./packages/**/*.ts -l --check",
     "typecheck": "tsc --noEmit",
-    "build": "tsc"
+    "build": "ts-node --transpileOnly ./scripts/build.ts"
+  },
+  "exports": {
+    "./compiler": {
+      "types": "./compiler/index.d.ts",
+      "require": "./compiler/index.js",
+      "default": "./compiler/index.js"
+    },
+    "./loader": {
+      "types": "./loader/index.d.ts",
+      "require": "./loader/index.js",
+      "default": "./loader/index.js"
+    },
+    "./package.json": "./package.json"
   },
   "repository": {
     "type": "git",
@@ -26,6 +38,7 @@
   "devDependencies": {
     "@types/lodash.merge": "^4.6.9",
     "@types/node": "^20.1.0",
-    "prettier": "^2.8.8"
+    "prettier": "^2.8.8",
+    "ts-node": "^10.9.2"
   }
 }
