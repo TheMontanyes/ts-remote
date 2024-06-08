@@ -65,21 +65,14 @@ export const printModule = (moduleName: string, parsedModule: ParsedModule) => {
         ({
           identifierNameExport,
           isDefaultImport,
-          isTypeOnlyExport,
           identifierNameImport,
           asNameExport,
           asNameImport,
           isNameSpaceImport,
         }) => {
-          if (isTypeOnlyExport) {
-            parsedModule.exportedIdentifiersTypeOnly.add(
-              asNameExport ? `${identifierNameExport} as ${asNameExport}` : identifierNameExport,
-            );
-          } else {
-            reExportsIdentifiers.push(
-              asNameExport ? `${identifierNameExport} as ${asNameExport}` : identifierNameExport,
-            );
-          }
+          reExportsIdentifiers.push(
+            asNameExport ? `${identifierNameExport} as ${asNameExport}` : identifierNameExport,
+          );
 
           if (isDefaultImport) {
             importItem.defaultName = identifierNameImport;
@@ -151,15 +144,6 @@ export const printModule = (moduleName: string, parsedModule: ParsedModule) => {
       moduleSource += printParsedNode(parsedNode);
       moduleSource += ts.sys.newLine;
     });
-  }
-
-  if (parsedModule.exportedIdentifiersTypeOnly.size > 0) {
-    moduleSource += ts.ScriptElementKindModifier.exportedModifier;
-    moduleSource += ' ';
-    moduleSource += ts.ScriptElementKind.typeElement;
-    moduleSource += ' ';
-    moduleSource += `{ ${[...parsedModule.exportedIdentifiersTypeOnly].join(', ')} }`;
-    moduleSource += ts.sys.newLine;
   }
 
   if (reExportsIdentifiers.length > 0) {

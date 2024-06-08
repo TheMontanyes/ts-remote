@@ -621,7 +621,6 @@ export const createParser = (typeChecker: ts.TypeChecker, stdLibTypes: Set<strin
   return (sourceFile: ts.SourceFile): ParsedModule => {
     const moduleSymbol = typeChecker.getSymbolAtLocation(sourceFile);
     const defaultParsedModule = {
-      exportedIdentifiersTypeOnly: new Set(),
       linkedParsedNodes: new Set(),
       exportedParsedNodes: new Set(),
       reExportsFromExternalModules: new Map(),
@@ -638,7 +637,6 @@ export const createParser = (typeChecker: ts.TypeChecker, stdLibTypes: Set<strin
       if (declarations) {
         declarations.forEach((node) => {
           if (ts.isExportSpecifier(node)) {
-            const isTypeOnly = node.isTypeOnly;
             const hasAsName = Boolean(node.propertyName);
 
             const nodeName = node.name.getText();
@@ -672,7 +670,6 @@ export const createParser = (typeChecker: ts.TypeChecker, stdLibTypes: Set<strin
                         identifierNameImport: identifierName,
                         identifierNameExport: identifierName,
                         isNameSpaceImport: true,
-                        isTypeOnlyExport: isTypeOnly,
                         asNameExport: hasAsName ? nodeName : undefined,
                       };
 
@@ -695,7 +692,6 @@ export const createParser = (typeChecker: ts.TypeChecker, stdLibTypes: Set<strin
                       identifierNameImport: externalImportModule.propertyName
                         ? externalImportModule.propertyName.getText()
                         : externalImportModule.name.getText(),
-                      isTypeOnlyExport: isTypeOnly,
                       asNameImport: externalImportModule.propertyName
                         ? externalImportModule.name.getText()
                         : undefined,
@@ -723,19 +719,14 @@ export const createParser = (typeChecker: ts.TypeChecker, stdLibTypes: Set<strin
                     acc.linkedParsedNodes.add(linkedNode);
                   });
 
-                  if (isTypeOnly) {
-                    acc.linkedParsedNodes.add(parsedNode);
-                    acc.exportedIdentifiersTypeOnly.add(parsedNode.name);
-                  } else {
-                    if (hasAsName) {
-                      parsedNode.code = parsedNode.code.replace(
-                        new RegExp(`\\b${parsedNode.name}\\b`),
-                        nodeName,
-                      );
-                    }
-
-                    acc.exportedParsedNodes.add(parsedNode);
+                  if (hasAsName) {
+                    parsedNode.code = parsedNode.code.replace(
+                      new RegExp(`\\b${parsedNode.name}\\b`),
+                      nodeName,
+                    );
                   }
+
+                  acc.exportedParsedNodes.add(parsedNode);
                 }
               }
             }

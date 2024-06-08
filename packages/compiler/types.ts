@@ -41,13 +41,11 @@ export type ReExportModule = {
   isNameSpaceImport?: boolean;
   asNameExport?: string;
   asNameImport?: string;
-  isTypeOnlyExport?: boolean;
 };
 
 export type ParsedModule = {
   reExportsFromExternalModules: Map<string, ReExportModule[]>;
   exportedParsedNodes: Set<ParsedNode>;
-  exportedIdentifiersTypeOnly: Set<string>;
   linkedParsedNodes: Set<ParsedNode>;
   exportDefaultParsedNode?: ParsedNode;
 };
