@@ -15,7 +15,7 @@ import {
   isFromStdLib,
   isNodeFromPackage,
   replaceImport,
-} from './lib';
+} from '../lib';
 import {
   printClassDeclarationDefinition,
   printFunctionDeclarationDefinition,
@@ -23,7 +23,9 @@ import {
   printVariableDeclarationDefinition,
 } from './printer';
 
-export const createParser = (typeChecker: ts.TypeChecker, stdLibTypes: Set<string>) => {
+type CreateParserOptions = { typeChecker: ts.TypeChecker; stdLibTypes: Set<string> };
+
+export const createParser = ({ typeChecker, stdLibTypes }: CreateParserOptions) => {
   const collectionParsedNodes = new Map<ts.Node, ParsedNode>();
   const searchLinkedNodes = createSearchLinkedNodes(typeChecker);
 
@@ -117,7 +119,7 @@ export const createParser = (typeChecker: ts.TypeChecker, stdLibTypes: Set<strin
       linkedNodes: [...searchLinkedNodes(declaration)],
     } as ParsedNode;
 
-    if (declaration.parameters.length) {
+    if (declaration.parameters.length > 0) {
       declaration.parameters.forEach((parameter) => {
         definition.parameters.push(
           `${parameter.name.getText()}${typeChecker.isOptionalParameter(parameter) ? '?:' : ':'} ${
@@ -345,7 +347,81 @@ export const createParser = (typeChecker: ts.TypeChecker, stdLibTypes: Set<strin
             ts.TypeFormatFlags.NoTruncation,
           );
 
-        const returnType = member.type?.getText() || signatureReturnTypeString || 'any';
+        const returnStatements = new Set<ts.ReturnStatement>();
+
+        const getReturnStatementFromBody = (node: ts.Node) => {
+          if (ts.isIfStatement(node)) {
+            node.thenStatement.forEachChild(getReturnStatementFromBody);
+
+            node.elseStatement?.forEachChild(getReturnStatementFromBody);
+          }
+
+          if (ts.isBlock(node)) {
+            node.statements.forEach(getReturnStatementFromBody);
+          }
+
+          if (ts.isReturnStatement(node)) {
+            returnStatements.add(node);
+          }
+        };
+
+        member.body?.forEachChild(getReturnStatementFromBody);
+
+        const returnTypes = [...returnStatements].reduce((type, returnStatement) => {
+          if (!returnStatement.expression) {
+            type.add('undefined');
+
+            return type;
+          }
+
+          const typeNode = typeChecker.getTypeAtLocation(returnStatement.expression);
+          const typeString = typeChecker.typeToString(
+            typeNode,
+            returnStatement.expression,
+            ts.TypeFormatFlags.NoTruncation,
+          );
+
+          if (typeNode.symbol?.declarations) {
+            const node = typeNode.symbol.declarations[0];
+
+            const nodes = searchLinkedNodes(node);
+
+            if (nodes.length > 0) {
+              parsed.linkedNodes.push(...nodes);
+            }
+          }
+
+          if (ts.isPropertyAccessExpression(returnStatement.expression)) {
+            if (ts.isIdentifier(returnStatement.expression.expression)) {
+              const symbol = typeChecker.getSymbolAtLocation(returnStatement.expression.expression);
+
+              if (symbol) {
+                const realSymbol =
+                  symbol.flags & ts.SymbolFlags.Alias
+                    ? typeChecker.getAliasedSymbol(symbol)
+                    : symbol;
+
+                const declaration = realSymbol.declarations?.[0];
+
+                if (declaration && ts.isEnumDeclaration(declaration)) {
+                  type.add(declaration.name.getText());
+
+                  return type;
+                }
+              }
+            }
+          }
+
+          type.add(typeString);
+
+          return type;
+        }, new Set<string>());
+
+        const returnType =
+          member.type?.getText() ||
+          (returnTypes.size > 0 && [...returnTypes].join(' | ')) ||
+          signatureReturnTypeString ||
+          'any';
 
         if (signatureReturnType?.symbol) {
           const declarations = signatureReturnType.symbol.getDeclarations();

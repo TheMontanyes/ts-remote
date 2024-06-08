@@ -3,7 +3,7 @@ import ts from 'typescript';
 import { createParser } from './parser';
 import { CompilerOptions } from './types';
 import { printModule } from './printer';
-import { getCompilerOptions, isFromStdLib } from './lib';
+import { getCompilerOptions, isFromStdLib } from '../lib';
 
 const cwd = process.cwd();
 
@@ -11,12 +11,8 @@ const baseOutputPath = path.resolve(cwd, '@types', 'types.d.ts');
 const baseOutputFormat = (result: string) => result;
 const baseTsConfigPath = path.resolve(cwd, 'tsconfig.json');
 
-export default async function main({
-  moduleList,
-  output,
-  tsconfig,
-  additionalDeclarations = [],
-}: CompilerOptions) {
+export default async function main(options: CompilerOptions) {
+  const { moduleList, output, tsconfig, additionalDeclarations = [] } = options;
   const compilerOptions = getCompilerOptions(tsconfig || baseTsConfigPath);
   const exposeEntries = Object.entries(moduleList);
 
@@ -49,15 +45,17 @@ export default async function main({
     return acc;
   }, new Set<string>());
 
-  const parser = createParser(typeChecker, stdLibTypes);
+  const parser = createParser({ typeChecker, stdLibTypes });
 
   let resultSourceCodeDTS = exposeEntries.reduce((acc, [moduleName, fileName]) => {
     const sourceFile = program.getSourceFile(fileName);
 
     if (sourceFile) {
-      const parsedFile = parser(sourceFile);
+      const parsedModule = parser(sourceFile);
 
-      acc += `${printModule(moduleName, parsedFile)}${ts.sys.newLine}`;
+      acc += `${printModule({ moduleName, parsedModule, compilerOptions: options })}${
+        ts.sys.newLine
+      }`;
     } else {
       throw new Error(`Not found file at - ${fileName}`);
     }

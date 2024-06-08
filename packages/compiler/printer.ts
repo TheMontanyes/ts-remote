@@ -1,5 +1,6 @@
 import {
   ClassDeclarationDefinition,
+  CompilerOptions,
   FunctionDeclarationDefinition,
   ParsedModule,
   ParsedNode,
@@ -29,6 +30,7 @@ export const printModifiers = (modifiers?: ts.NodeArray<ts.ModifierLike>): strin
         ts.SyntaxKind.AsyncKeyword,
         ts.SyntaxKind.ExportKeyword,
         ts.SyntaxKind.DeclareKeyword,
+        ts.SyntaxKind.Decorator,
       ].includes(modifier.kind)
     ) {
       acc.push(modifier.getText());
@@ -38,7 +40,16 @@ export const printModifiers = (modifiers?: ts.NodeArray<ts.ModifierLike>): strin
   }, []);
 };
 
-export const printModule = (moduleName: string, parsedModule: ParsedModule) => {
+type PrintModuleOptions = {
+  moduleName: string;
+  parsedModule: ParsedModule;
+  compilerOptions: CompilerOptions;
+};
+
+export const printModule = ({ moduleName, parsedModule, compilerOptions }: PrintModuleOptions) => {
+  const { output } = compilerOptions;
+  const isDTSOutput = output.filename?.endsWith('.d.ts');
+
   let moduleSource = ``;
 
   moduleSource += ts.ScriptElementKindModifier.ambientModifier;
@@ -119,8 +130,10 @@ export const printModule = (moduleName: string, parsedModule: ParsedModule) => {
   }
 
   if (parsedModule.linkedParsedNodes.size > 0) {
-    // moduleSource += '{';
-    moduleSource += ts.sys.newLine;
+    if (isDTSOutput) {
+      moduleSource += '{';
+      moduleSource += ts.sys.newLine;
+    }
 
     parsedModule.linkedParsedNodes.forEach((linkedParsedNode) => {
       if (!linkedParsedNode.code) return;
@@ -133,8 +146,10 @@ export const printModule = (moduleName: string, parsedModule: ParsedModule) => {
       moduleSource += ts.sys.newLine;
     });
 
-    // moduleSource += '}';
-    moduleSource += ts.sys.newLine;
+    if (isDTSOutput) {
+      moduleSource += '}';
+      moduleSource += ts.sys.newLine;
+    }
   }
 
   if (parsedModule.exportedParsedNodes.size > 0) {

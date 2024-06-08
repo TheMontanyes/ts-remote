@@ -1,5 +1,5 @@
 import ts from 'typescript';
-import { isFromStdLib, isNodeFromPackage } from './lib';
+import { isFromStdLib, isNodeFromPackage } from '../lib';
 
 const getIdentifierFromQualifiedName = (
   node: ts.QualifiedName | ts.Identifier,

@@ -47,6 +47,6 @@ export const downloadFile = async ({ filename, requestOptions }: DownloadOptions
     request.end();
     await promise;
   } catch (error) {
-    console.log(`ts-remote:`, error);
+    console.error(`ts-remote:`, error);
   }
 };

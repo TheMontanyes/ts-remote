@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import ts, { ModuleKind, ModuleResolutionKind, ScriptTarget } from 'typescript';
-import { getCompilerOptions } from '../packages/compiler/lib';
+import { getCompilerOptions } from '../packages/lib';
 
 const cwd = process.cwd();
 
@@ -19,7 +19,7 @@ const program = ts.createProgram(
     ts.sys.resolvePath(`${cwd}/packages/loader/index.ts`),
   ],
   {
-    ...require(path.resolve(cwd, 'tsconfig.json')).compilerOptions,
+    ...getCompilerOptions(path.resolve(cwd, 'tsconfig.json')),
     module: ModuleKind.CommonJS,
     outDir: OUTPUT_PATH,
     target: ScriptTarget.ESNext,

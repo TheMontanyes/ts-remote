@@ -7,7 +7,6 @@ const getTsConfig = (pathToTSConfig: string) => {
   try {
     return JSON.parse(fs.readFileSync(pathToTSConfig).toString('utf8'));
   } catch (e) {
-    console.log(e);
     throw new Error(
       `ts-remote: [ERROR] Error reading tsconfig.json. Check the specified path or the validity of the file.\n
       ${e}`,
@@ -36,15 +35,7 @@ export const getCompilerOptions = (pathToTSConfig?: string): ts.CompilerOptions 
       compilerOptions.baseUrl = path.resolve(path.dirname(pathToTSConfig), compilerOptions.baseUrl);
     }
 
-    return {
-      ...compilerOptions,
-      module: ts.ModuleKind.CommonJS,
-      moduleResolution: ts.ModuleResolutionKind.NodeNext,
-      noEmit: true,
-      declaration: true,
-      esModuleInterop: true,
-      emitDeclarationOnly: true,
-    };
+    return compilerOptions;
   } catch (e) {
     throw new Error(
       `ts-remote: [ERROR] Error reading tsconfig.json. Check the specified path or the validity of the file.\n
