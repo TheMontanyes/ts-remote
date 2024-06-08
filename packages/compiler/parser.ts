@@ -619,72 +619,60 @@ export const createParser = (typeChecker: ts.TypeChecker, stdLibTypes: Set<strin
   };
 
   return (sourceFile: ts.SourceFile): ParsedModule => {
-    const module = sourceFile.statements.reduce(
-      (acc, statement) => {
-        if (ts.isExportDeclaration(statement)) {
-          statement.exportClause?.forEachChild((node) => {
-            if (ts.isExportSpecifier(node)) {
-              const isTypeOnly = node.isTypeOnly || statement.isTypeOnly;
-              const hasAsName = Boolean(node.propertyName);
+    const moduleSymbol = typeChecker.getSymbolAtLocation(sourceFile);
+    const defaultParsedModule = {
+      exportedIdentifiersTypeOnly: new Set(),
+      linkedParsedNodes: new Set(),
+      exportedParsedNodes: new Set(),
+      reExportsFromExternalModules: new Map(),
+    } as ParsedModule;
 
-              const nodeName = node.name.getText();
+    if (!moduleSymbol) {
+      return defaultParsedModule;
+    }
 
-              const symbol = typeChecker.getSymbolAtLocation(node.name);
+    const exportSymbolsFromModule = typeChecker.getExportsOfModule(moduleSymbol);
+    const module = exportSymbolsFromModule.reduce((acc, exportSymbol) => {
+      const declarations = exportSymbol.declarations;
 
-              if (symbol) {
-                const aliasedSymbol = typeChecker.getAliasedSymbol(symbol);
-                const declaration = aliasedSymbol.declarations?.[0];
+      if (declarations) {
+        declarations.forEach((node) => {
+          if (ts.isExportSpecifier(node)) {
+            const isTypeOnly = node.isTypeOnly;
+            const hasAsName = Boolean(node.propertyName);
 
-                if (!declaration || isNodeFromPackage(declaration)) {
-                  const unknownSymbol = (sourceFile as any).locals.get(
-                    hasAsName ? node.propertyName!.getText() : nodeName,
-                  );
+            const nodeName = node.name.getText();
 
-                  if (unknownSymbol?.declarations?.[0]) {
-                    const externalImportModule = unknownSymbol.declarations[0];
+            const symbol = typeChecker.getSymbolAtLocation(node.name);
 
-                    if (
-                      ts.isNamespaceImport(externalImportModule) ||
-                      ts.isImportClause(externalImportModule)
-                    ) {
-                      const packageName = ts.isNamespaceImport(externalImportModule)
-                        ? externalImportModule.parent.parent.moduleSpecifier.getText()
-                        : externalImportModule.parent.moduleSpecifier.getText();
+            if (symbol) {
+              const aliasedSymbol = typeChecker.getAliasedSymbol(symbol);
+              const declaration = aliasedSymbol.declarations?.[0];
 
-                      if (externalImportModule.name) {
-                        const identifierName = externalImportModule.name.getText();
+              if (!declaration || isNodeFromPackage(declaration)) {
+                const unknownSymbol = (sourceFile as any).locals.get(
+                  hasAsName ? node.propertyName!.getText() : nodeName,
+                );
 
-                        const reExportItem: ReExportModule = {
-                          identifierNameImport: identifierName,
-                          identifierNameExport: identifierName,
-                          isNameSpaceImport: true,
-                          isTypeOnlyExport: isTypeOnly,
-                          asNameExport: hasAsName ? nodeName : undefined,
-                        };
+                if (unknownSymbol?.declarations?.[0]) {
+                  const externalImportModule = unknownSymbol.declarations[0];
 
-                        if (!acc.reExportsFromExternalModules.has(packageName)) {
-                          acc.reExportsFromExternalModules.set(packageName, [reExportItem]);
-                        } else {
-                          acc.reExportsFromExternalModules.get(packageName)!.push(reExportItem);
-                        }
-                      }
+                  if (
+                    ts.isNamespaceImport(externalImportModule) ||
+                    ts.isImportClause(externalImportModule)
+                  ) {
+                    const packageName = ts.isNamespaceImport(externalImportModule)
+                      ? externalImportModule.parent.parent.moduleSpecifier.getText()
+                      : externalImportModule.parent.moduleSpecifier.getText();
 
-                      return;
-                    }
-
-                    if (ts.isImportSpecifier(externalImportModule)) {
-                      const packageName =
-                        externalImportModule.parent.parent.parent.moduleSpecifier.getText();
+                    if (externalImportModule.name) {
+                      const identifierName = externalImportModule.name.getText();
 
                       const reExportItem: ReExportModule = {
-                        identifierNameExport: externalImportModule.name.getText(),
-                        identifierNameImport: externalImportModule.propertyName
-                          ? externalImportModule.propertyName.getText()
-                          : externalImportModule.name.getText(),
+                        identifierNameImport: identifierName,
+                        identifierNameExport: identifierName,
+                        isNameSpaceImport: true,
                         isTypeOnlyExport: isTypeOnly,
-                        asNameImport: externalImportModule.propertyName
-                          ? externalImportModule.name.getText()
-                          : undefined,
                         asNameExport: hasAsName ? nodeName : undefined,
                       };
 
@@ -693,90 +681,101 @@ export const createParser = (typeChecker: ts.TypeChecker, stdLibTypes: Set<strin
                       } else {
                         acc.reExportsFromExternalModules.get(packageName)!.push(reExportItem);
                       }
-
-                      return;
                     }
+
+                    return;
+                  }
+
+                  if (ts.isImportSpecifier(externalImportModule)) {
+                    const packageName =
+                      externalImportModule.parent.parent.parent.moduleSpecifier.getText();
+
+                    const reExportItem: ReExportModule = {
+                      identifierNameExport: externalImportModule.name.getText(),
+                      identifierNameImport: externalImportModule.propertyName
+                        ? externalImportModule.propertyName.getText()
+                        : externalImportModule.name.getText(),
+                      isTypeOnlyExport: isTypeOnly,
+                      asNameImport: externalImportModule.propertyName
+                        ? externalImportModule.name.getText()
+                        : undefined,
+                      asNameExport: hasAsName ? nodeName : undefined,
+                    };
+
+                    if (!acc.reExportsFromExternalModules.has(packageName)) {
+                      acc.reExportsFromExternalModules.set(packageName, [reExportItem]);
+                    } else {
+                      acc.reExportsFromExternalModules.get(packageName)!.push(reExportItem);
+                    }
+
+                    return;
                   }
                 }
+              }
 
-                if (declaration) {
-                  const parsedNode = parseNode(declaration);
+              if (declaration) {
+                const parsedNode = parseNode(declaration);
 
-                  if (parsedNode) {
-                    const parsedLinkedNodes = parseLinkedNodes(parsedNode);
+                if (parsedNode) {
+                  const parsedLinkedNodes = parseLinkedNodes(parsedNode);
 
-                    parsedLinkedNodes?.forEach((linkedNode) => {
-                      acc.linkedParsedNodes.add(linkedNode);
-                    });
+                  parsedLinkedNodes?.forEach((linkedNode) => {
+                    acc.linkedParsedNodes.add(linkedNode);
+                  });
 
-                    if (isTypeOnly) {
-                      acc.linkedParsedNodes.add(parsedNode);
-                      acc.exportedIdentifiersTypeOnly.add(parsedNode.name);
-                    } else {
-                      if (hasAsName) {
-                        parsedNode.code = parsedNode.code.replace(
-                          new RegExp(`\\b${parsedNode.name}\\b`),
-                          nodeName,
-                        );
-                      }
-
-                      acc.exportedParsedNodes.add(parsedNode);
+                  if (isTypeOnly) {
+                    acc.linkedParsedNodes.add(parsedNode);
+                    acc.exportedIdentifiersTypeOnly.add(parsedNode.name);
+                  } else {
+                    if (hasAsName) {
+                      parsedNode.code = parsedNode.code.replace(
+                        new RegExp(`\\b${parsedNode.name}\\b`),
+                        nodeName,
+                      );
                     }
+
+                    acc.exportedParsedNodes.add(parsedNode);
                   }
                 }
               }
             }
-          });
-        }
-
-        // export default
-        if (ts.isExportAssignment(statement)) {
-          const typeString = typeChecker.typeToString(
-            typeChecker.getTypeAtLocation(statement.expression),
-            statement.expression,
-            ts.TypeFormatFlags.NoTruncation,
-          );
-
-          acc.exportDefaultParsedNode = {
-            astNode: statement.expression,
-            jsDoc: '',
-            code: `const _default: ${replaceImport(typeString)};${
-              ts.sys.newLine
-            }export default _default;`,
-            name: '',
-            linkedNodes: [],
-          };
-        }
-
-        if (ts.canHaveModifiers(statement)) {
-          const isExport = statement.modifiers?.some(
-            (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword,
-          );
-
-          if (isExport) {
-            const parsedNode = parseNode(statement);
-
-            if (parsedNode) {
-              const parsedLinkedNodes = parseLinkedNodes(parsedNode);
-
-              parsedLinkedNodes?.forEach((linkedNode) => {
-                acc.linkedParsedNodes.add(linkedNode);
-              });
-
-              acc.exportedParsedNodes.add(parsedNode);
-            }
           }
-        }
 
-        return acc;
-      },
-      {
-        exportedIdentifiersTypeOnly: new Set(),
-        linkedParsedNodes: new Set(),
-        exportedParsedNodes: new Set(),
-        reExportsFromExternalModules: new Map(),
-      } as ParsedModule,
-    );
+          // export default
+          if (ts.isExportAssignment(node)) {
+            const typeString = typeChecker.typeToString(
+              typeChecker.getTypeAtLocation(node.expression),
+              node.expression,
+              ts.TypeFormatFlags.NoTruncation,
+            );
+
+            acc.exportDefaultParsedNode = {
+              astNode: node.expression,
+              jsDoc: '',
+              code: `const _default: ${replaceImport(typeString)};${
+                ts.sys.newLine
+              }export default _default;`,
+              name: '',
+              linkedNodes: [],
+            };
+          }
+
+          const parsedNode = parseNode(node);
+
+          if (parsedNode) {
+            const parsedLinkedNodes = parseLinkedNodes(parsedNode);
+
+            parsedLinkedNodes?.forEach((linkedNode) => {
+              acc.linkedParsedNodes.add(linkedNode);
+            });
+
+            acc.exportedParsedNodes.add(parsedNode);
+          }
+        });
+      }
+
+      return acc;
+    }, defaultParsedModule);
 
     // Clearing caches after parsing every module
     visitedLinkedNodes.clear();

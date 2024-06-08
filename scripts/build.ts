@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import ts, { ModuleKind } from 'typescript';
+import ts, { ModuleKind, ModuleResolutionKind, ScriptTarget } from 'typescript';
+import { getCompilerOptions } from '../packages/compiler/lib';
 
 const cwd = process.cwd();
 
@@ -17,7 +18,13 @@ const program = ts.createProgram(
     ts.sys.resolvePath(`${cwd}/packages/compiler/index.ts`),
     ts.sys.resolvePath(`${cwd}/packages/loader/index.ts`),
   ],
-  { module: ModuleKind.CommonJS, outDir: OUTPUT_PATH, declaration: true, esModuleInterop: true },
+  {
+    ...require(path.resolve(cwd, 'tsconfig.json')).compilerOptions,
+    module: ModuleKind.CommonJS,
+    outDir: OUTPUT_PATH,
+    target: ScriptTarget.ESNext,
+    moduleResolution: ModuleResolutionKind.Node10,
+  },
 );
 
 program.emit();
