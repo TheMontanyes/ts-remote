@@ -116,6 +116,24 @@ export const createSearchLinkedNodes = (typeChecker: ts.TypeChecker) => {
     }
 
     if (ts.isCallOrNewExpression(node)) {
+      if (ts.isPropertyAccessExpression(node.expression)) {
+        const symbol = typeChecker.getSymbolAtLocation(node.expression.expression);
+
+        if (symbol) {
+          const realSymbol = isCanBeAliasSymbol(symbol)
+            ? typeChecker.getAliasedSymbol(symbol)
+            : symbol;
+
+          if (realSymbol.declarations?.length) {
+            const declaration = realSymbol.declarations[0];
+
+            if (declaration) {
+              addToCollection(declaration, collection);
+            }
+          }
+        }
+      }
+
       const signature = typeChecker.getResolvedSignature(node);
 
       if (signature) {

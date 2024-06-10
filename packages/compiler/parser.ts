@@ -680,6 +680,23 @@ export const createParser = ({ typeChecker, stdLibTypes }: CreateParserOptions) 
         }
       }
 
+      if (ts.isModuleDeclaration(node)) {
+        if (ts.isSourceFile(node.parent)) {
+          const sourceFile = node.parent.getSourceFile();
+          const moduleSymbol = typeChecker.getSymbolAtLocation(sourceFile);
+          const modulePath = moduleSymbol?.name;
+
+          if (modulePath && isNodeFromPackage(sourceFile)) {
+            const name = node.name.getText();
+
+            parsedNode.code = parsedNode.code.replace(
+              createRegexpIdentifier(name),
+              replaceImport(`import(${modulePath}).${name}`),
+            );
+          }
+        }
+      }
+
       if (parsed) {
         acc.add(parsed);
 
