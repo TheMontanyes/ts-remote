@@ -1,4 +1,4 @@
-import ts from 'typescript';
+import ts, { InternalSymbolName } from 'typescript';
 
 import {
   ClassDeclarationDefinition,
@@ -22,6 +22,7 @@ import {
   printModifiers,
   printVariableDeclarationDefinition,
 } from './printer';
+import path from 'node:path';
 
 type CreateParserOptions = { typeChecker: ts.TypeChecker; stdLibTypes: Set<string> };
 
@@ -522,6 +523,26 @@ export const createParser = ({ typeChecker, stdLibTypes }: CreateParserOptions) 
 
         resultMember += `${member.name?.getText()}: ${replaceImport(typeStringMember)}`;
 
+        if (member.initializer && ts.isCallOrNewExpression(member.initializer)) {
+          const type = typeChecker.getTypeAtLocation(member.initializer.expression);
+          const sourceFile = type.symbol.valueDeclaration?.getSourceFile();
+
+          if (
+            sourceFile &&
+            ts.isIdentifier(member.initializer.expression) &&
+            isNodeFromPackage(sourceFile)
+          ) {
+            const name = member.initializer.expression.getText();
+            const [, libPath] = sourceFile.fileName.split('/node_modules/');
+            const parsedPath = path.parse(libPath);
+
+            resultMember = resultMember.replace(
+              createRegexpIdentifier(name),
+              `import("${path.join(parsedPath.dir, parsedPath.name)}").${name}`,
+            );
+          }
+        }
+
         const jsDOC = getJsDOC(member);
 
         if (jsDOC) {
@@ -672,9 +693,12 @@ export const createParser = ({ typeChecker, stdLibTypes }: CreateParserOptions) 
           const modulePath = moduleSymbol?.name;
 
           if (modulePath) {
+            const [, libPath] = modulePath.split('/node_modules/');
+            const parsedPath = path.parse(libPath);
+
             parsedNode.code = parsedNode.code.replace(
               createRegexpIdentifier(node.parent.parent.name.getText()),
-              replaceImport(`import(${modulePath})`),
+              `import(${path.join(parsedPath.dir, parsedPath.name)})`,
             );
           }
         }
@@ -724,15 +748,38 @@ export const createParser = ({ typeChecker, stdLibTypes }: CreateParserOptions) 
     }
 
     const exportSymbolsFromModule = typeChecker.getExportsOfModule(moduleSymbol);
-    const module = exportSymbolsFromModule.reduce((acc, exportSymbol) => {
+    const list = moduleSymbol.exports?.size
+      ? [...exportSymbolsFromModule, ...moduleSymbol.exports.values()]
+      : exportSymbolsFromModule;
+
+    const module = list.reduce((acc, exportSymbol) => {
       const declarations = exportSymbol.declarations;
 
       if (declarations) {
         declarations.forEach((node) => {
+          if (ts.isExportDeclaration(node)) {
+            // export * from ...
+            if (!node.exportClause) {
+              if (node.moduleSpecifier) {
+                acc.exportedParsedNodes.add({
+                  name: '',
+                  code: `export * from ${node.moduleSpecifier.getText()};`,
+                  linkedNodes: [],
+                  astNode: node,
+                  jsDoc: '',
+                });
+
+                return;
+              }
+            }
+          }
+
           if (ts.isExportSpecifier(node)) {
             const hasAsName = Boolean(node.propertyName);
 
             const nodeName = node.name.getText();
+
+            const isDefault = nodeName === 'default';
 
             const symbol = typeChecker.getSymbolAtLocation(node.name);
 
@@ -741,8 +788,10 @@ export const createParser = ({ typeChecker, stdLibTypes }: CreateParserOptions) 
               const declaration = aliasedSymbol.declarations?.[0];
 
               if (!declaration || isNodeFromPackage(declaration)) {
-                const unknownSymbol = (sourceFile as any).locals.get(
-                  hasAsName ? node.propertyName!.getText() : nodeName,
+                const unknownSymbol = moduleSymbol.exports?.get(
+                  (hasAsName && !isDefault ? node.propertyName!.getText() : nodeName) as string & {
+                    __escapedIdentifier: void;
+                  },
                 );
 
                 if (unknownSymbol?.declarations?.[0]) {
@@ -776,11 +825,85 @@ export const createParser = ({ typeChecker, stdLibTypes }: CreateParserOptions) 
                     return;
                   }
 
-                  if (ts.isImportSpecifier(externalImportModule)) {
-                    const packageName =
-                      externalImportModule.parent.parent.parent.moduleSpecifier.getText();
+                  if (
+                    ts.isImportSpecifier(externalImportModule) ||
+                    ts.isExportSpecifier(externalImportModule)
+                  ) {
+                    let packageName = '';
+                    let isDefaultImport = false;
+                    let isNameSpaceImport = false;
+
+                    if (ts.isExportSpecifier(externalImportModule)) {
+                      if (!externalImportModule.parent.parent.moduleSpecifier) {
+                        const importDeclarations = sourceFile.statements.filter(
+                          ts.isImportDeclaration,
+                        );
+
+                        const targetImport = importDeclarations.find((importDecl) => {
+                          if (importDecl?.importClause?.namedBindings) {
+                            if (
+                              ts.isNamedImports(importDecl.importClause.namedBindings) &&
+                              importDecl.importClause.namedBindings.elements.length > 0
+                            ) {
+                              return importDecl.importClause.namedBindings.elements.some(
+                                (element) =>
+                                  element.name.getText() === externalImportModule.name.getText(),
+                              );
+                            }
+
+                            if (ts.isNamespaceImport(importDecl.importClause.namedBindings)) {
+                              isNameSpaceImport = true;
+
+                              return (
+                                externalImportModule.name.getText() ==
+                                importDecl.importClause.namedBindings.name.getText()
+                              );
+                            }
+                          }
+
+                          if (importDecl.importClause) {
+                            isDefaultImport =
+                              importDecl.importClause.name?.getText() ===
+                              externalImportModule.name.getText();
+
+                            return isDefaultImport;
+                          }
+
+                          return false;
+                        });
+
+                        if (targetImport) {
+                          packageName = targetImport.moduleSpecifier.getText();
+                        }
+                      } else {
+                        packageName = externalImportModule.parent.parent.moduleSpecifier.getText();
+                      }
+                    }
+
+                    if (ts.isImportSpecifier(externalImportModule)) {
+                      packageName =
+                        externalImportModule.parent.parent.parent.moduleSpecifier.getText();
+                    }
+
+                    if (!packageName) return;
+
+                    if (isDefault && node.propertyName) {
+                      acc.exportDefaultParsedNode = {
+                        astNode: externalImportModule,
+                        jsDoc: '',
+                        code: `const _default: import(${packageName}).${node.propertyName.getText()};${
+                          ts.sys.newLine
+                        }export default _default;`,
+                        name: '',
+                        linkedNodes: [],
+                      };
+
+                      return;
+                    }
 
                     const reExportItem: ReExportModule = {
+                      isNameSpaceImport,
+                      isDefaultImport,
                       identifierNameExport: externalImportModule.name.getText(),
                       identifierNameImport: externalImportModule.propertyName
                         ? externalImportModule.propertyName.getText()

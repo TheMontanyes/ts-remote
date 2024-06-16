@@ -81,9 +81,13 @@ export const printModule = ({ moduleName, parsedModule, compilerOptions }: Print
           asNameImport,
           isNameSpaceImport,
         }) => {
-          reExportsIdentifiers.push(
-            asNameExport ? `${identifierNameExport} as ${asNameExport}` : identifierNameExport,
-          );
+          const reExportsIdentifier = asNameExport
+            ? `${identifierNameExport} as ${asNameExport}`
+            : identifierNameExport;
+
+          if (!reExportsIdentifiers.includes(reExportsIdentifier)) {
+            reExportsIdentifiers.push(reExportsIdentifier);
+          }
 
           if (isDefaultImport) {
             importItem.defaultName = identifierNameImport;
@@ -93,9 +97,10 @@ export const printModule = ({ moduleName, parsedModule, compilerOptions }: Print
             importItem.namespace = identifierNameImport;
           }
 
-          importItem.identifiers.push(
-            asNameImport ? `${identifierNameImport} as ${asNameImport}` : identifierNameImport,
-          );
+          if (!isDefaultImport)
+            importItem.identifiers.push(
+              asNameImport ? `${identifierNameImport} as ${asNameImport}` : identifierNameImport,
+            );
         },
       );
 
