@@ -69,7 +69,7 @@ export const createSearchLinkedNodes = (typeChecker: ts.TypeChecker) => {
 
     // const foo = FooService.getValue
     if (ts.isPropertyAccessExpression(node)) {
-      const type = typeChecker.getTypeAtLocation(node);
+      const type = typeChecker.getTypeAtLocation(node.expression);
       const linkedNode = type.symbol?.declarations?.[0];
 
       if (linkedNode) {
@@ -138,6 +138,7 @@ export const createSearchLinkedNodes = (typeChecker: ts.TypeChecker) => {
 
       if (signature) {
         const returnType = typeChecker.getReturnTypeOfSignature(signature);
+
         const symbol = returnType.getSymbol();
 
         if (symbol) {

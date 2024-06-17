@@ -1,4 +1,4 @@
-import ts, { InternalSymbolName } from 'typescript';
+import ts from 'typescript';
 
 import {
   ClassDeclarationDefinition,
@@ -9,36 +9,74 @@ import {
   VariableDeclarationDefinition,
 } from './types';
 import { createSearchLinkedNodes } from './search-linked-nodes';
-import {
-  createRegexpIdentifier,
-  getJsDOC,
-  isFromStdLib,
-  isNodeFromPackage,
-  replaceImport,
-} from '../lib';
+import { createRegexpIdentifier, getJsDOC, isFromStdLib, isNodeFromPackage } from '../lib';
 import {
   printClassDeclarationDefinition,
   printFunctionDeclarationDefinition,
   printModifiers,
   printVariableDeclarationDefinition,
 } from './printer';
-import path from 'node:path';
+import path from 'path';
 
-type CreateParserOptions = { typeChecker: ts.TypeChecker; stdLibTypes: Set<string> };
+const getPackagePath = (fileName: string) => {
+  const [, libPath] = fileName.split('/node_modules/');
+  const parsedPath = path.parse(
+    libPath
+      .replace(/["']/g, '')
+      .replace(/\/index$/, '')
+      .replace(/^@types\//, ''),
+  );
 
-export const createParser = ({ typeChecker, stdLibTypes }: CreateParserOptions) => {
+  return path.join(parsedPath.dir, parsedPath.name);
+};
+
+const replaceImport = (str: string) => {
+  return str.replace(/import\("(.*?)"\)((\.)?)/g, (substring, args) => {
+    if (args.includes('/node_modules/')) {
+      const packagePath = getPackagePath(args);
+
+      return substring.replace(args, packagePath);
+    }
+
+    return '';
+  });
+};
+
+export const createParser = (program: ts.Program) => {
+  const typeChecker = program.getTypeChecker();
   const collectionParsedNodes = new Map<ts.Node, ParsedNode>();
   const searchLinkedNodes = createSearchLinkedNodes(typeChecker);
+
+  const { stdLibIdentifierNames, packages } = program.getSourceFiles().reduce(
+    (acc, sourceFile) => {
+      if (isNodeFromPackage(sourceFile)) {
+        acc.packages.add(sourceFile.fileName);
+
+        if (isFromStdLib(sourceFile)) {
+          sourceFile.forEachChild((node) => {
+            if (
+              ts.isTypeAliasDeclaration(node) ||
+              ts.isInterfaceDeclaration(node) ||
+              ts.isEnumDeclaration(node)
+            ) {
+              if (node.name) {
+                acc.stdLibIdentifierNames.add(node.name.getText());
+              }
+            }
+          });
+        }
+      }
+
+      return acc;
+    },
+    { stdLibIdentifierNames: new Set<string>(), packages: new Set<string>() },
+  );
 
   const parseVariableDeclaration = (declaration: ts.VariableDeclaration): ParsedNode => {
     const statement = declaration.parent.parent as ts.VariableStatement;
 
-    const typeExpressionNode = typeChecker.getTypeAtLocation(declaration);
-    const typeString = typeChecker.typeToString(
-      typeExpressionNode,
-      declaration,
-      ts.TypeFormatFlags.NoTruncation,
-    );
+    const type = typeChecker.getTypeAtLocation(declaration);
+    const typeString = typeChecker.typeToString(type, declaration, ts.TypeFormatFlags.NoTruncation);
 
     const definition: VariableDeclarationDefinition = {
       identifierName: declaration.name.getText(),
@@ -68,20 +106,12 @@ export const createParser = ({ typeChecker, stdLibTypes }: CreateParserOptions) 
       parsed.code = printVariableDeclarationDefinition(definition);
 
       if (expression) {
-        if (ts.isAsExpression(expression)) {
-          if (expression.type) {
-            const nodes = searchLinkedNodes(expression.type);
+        const nodes = searchLinkedNodes(
+          ts.isAsExpression(expression) ? expression.type : expression,
+        );
 
-            if (nodes.length > 0) {
-              parsed.linkedNodes.push(...nodes);
-            }
-          }
-        } else {
-          const nodes = searchLinkedNodes(expression);
-
-          if (nodes.length > 0) {
-            parsed.linkedNodes.push(...nodes);
-          }
+        if (nodes.length > 0) {
+          parsed.linkedNodes.push(...nodes);
         }
       }
     }
@@ -105,7 +135,7 @@ export const createParser = ({ typeChecker, stdLibTypes }: CreateParserOptions) 
     const definition: FunctionDeclarationDefinition = {
       identifierName: declaration.name ? declaration.name.getText() : '__anonymous',
       parameters: [],
-      returnType,
+      returnType: replaceImport(returnType),
       keyword: ts.ScriptElementKind.functionElement,
       modifiers: printModifiers(declaration.modifiers),
       typeParameters: declaration.typeParameters
@@ -466,7 +496,7 @@ export const createParser = ({ typeChecker, stdLibTypes }: CreateParserOptions) 
           });
         }
 
-        resultMember += `(${parameters.join(', ')}): ${returnType}`;
+        resultMember += `(${parameters.join(', ')}): ${replaceImport(returnType)}`;
 
         if (ts.isGetAccessor(member)) {
           resultMember = `get ${resultMember}`;
@@ -533,12 +563,11 @@ export const createParser = ({ typeChecker, stdLibTypes }: CreateParserOptions) 
             isNodeFromPackage(sourceFile)
           ) {
             const name = member.initializer.expression.getText();
-            const [, libPath] = sourceFile.fileName.split('/node_modules/');
-            const parsedPath = path.parse(libPath);
+            const packagePath = getPackagePath(sourceFile.fileName);
 
             resultMember = resultMember.replace(
               createRegexpIdentifier(name),
-              `import("${path.join(parsedPath.dir, parsedPath.name)}").${name}`,
+              `import("${packagePath}").${name}`,
             );
           }
         }
@@ -643,7 +672,7 @@ export const createParser = ({ typeChecker, stdLibTypes }: CreateParserOptions) 
         const list = collisionsMap.get(parsed.name)!;
         const fileName = parsed.astNode.getSourceFile().fileName;
 
-        if (stdLibTypes.has(parsed.name)) {
+        if (stdLibIdentifierNames.has(parsed.name)) {
           list.add(parsed.name + parsedNode.name);
         }
 
@@ -693,12 +722,11 @@ export const createParser = ({ typeChecker, stdLibTypes }: CreateParserOptions) 
           const modulePath = moduleSymbol?.name;
 
           if (modulePath) {
-            const [, libPath] = modulePath.split('/node_modules/');
-            const parsedPath = path.parse(libPath);
+            const packagePath = getPackagePath(modulePath);
 
             parsedNode.code = parsedNode.code.replace(
               createRegexpIdentifier(node.parent.parent.name.getText()),
-              `import(${path.join(parsedPath.dir, parsedPath.name)})`,
+              `import("${packagePath}")`,
             );
           }
         }
@@ -737,10 +765,12 @@ export const createParser = ({ typeChecker, stdLibTypes }: CreateParserOptions) 
 
   return (sourceFile: ts.SourceFile): ParsedModule => {
     const moduleSymbol = typeChecker.getSymbolAtLocation(sourceFile);
+
     const defaultParsedModule = {
       linkedParsedNodes: new Set(),
       exportedParsedNodes: new Set(),
       reExportsFromExternalModules: new Map(),
+      exportDefaultParsedNode: undefined,
     } as ParsedModule;
 
     if (!moduleSymbol) {
@@ -748,19 +778,29 @@ export const createParser = ({ typeChecker, stdLibTypes }: CreateParserOptions) 
     }
 
     const exportSymbolsFromModule = typeChecker.getExportsOfModule(moduleSymbol);
-    const list = moduleSymbol.exports?.size
-      ? [...exportSymbolsFromModule, ...moduleSymbol.exports.values()]
-      : exportSymbolsFromModule;
 
-    const module = list.reduce((acc, exportSymbol) => {
-      const declarations = exportSymbol.declarations;
+    const module = [...exportSymbolsFromModule, ...(moduleSymbol.exports?.values() ?? [])].reduce(
+      (acc, exportSymbol) => {
+        const declarations = exportSymbol.declarations;
 
-      if (declarations) {
-        declarations.forEach((node) => {
+        if (declarations?.length) {
+          const [node] = declarations;
+
+          // export * from ...
           if (ts.isExportDeclaration(node)) {
-            // export * from ...
             if (!node.exportClause) {
               if (node.moduleSpecifier) {
+                const existPath = ['/index.ts', '/index.js', '.ts', '.js'].some((restPath) => {
+                  const pathName = path.resolve(
+                    path.dirname(node.getSourceFile().fileName),
+                    node.moduleSpecifier!.getText().replace(/'/g, '') + restPath,
+                  );
+
+                  return program.getSourceFile(pathName);
+                });
+
+                if (existPath) return acc;
+
                 acc.exportedParsedNodes.add({
                   name: '',
                   code: `export * from ${node.moduleSpecifier.getText()};`,
@@ -768,188 +808,66 @@ export const createParser = ({ typeChecker, stdLibTypes }: CreateParserOptions) 
                   astNode: node,
                   jsDoc: '',
                 });
-
-                return;
               }
             }
+
+            return acc;
           }
 
+          // export {} || export {} from ...
           if (ts.isExportSpecifier(node)) {
-            const hasAsName = Boolean(node.propertyName);
+            const aliasedSymbol = typeChecker.getAliasedSymbol(exportSymbol);
+            const declarations = aliasedSymbol?.declarations;
 
-            const nodeName = node.name.getText();
+            if (declarations?.length) {
+              const [exportNode] = declarations;
 
-            const isDefault = nodeName === 'default';
+              if (isNodeFromPackage(exportNode)) {
+                let packageName = '';
 
-            const symbol = typeChecker.getSymbolAtLocation(node.name);
+                if (ts.isModuleBlock(exportNode.parent)) {
+                  packageName = exportNode.parent.parent.name.getText();
 
-            if (symbol) {
-              const aliasedSymbol = typeChecker.getAliasedSymbol(symbol);
-              const declaration = aliasedSymbol.declarations?.[0];
-
-              if (!declaration || isNodeFromPackage(declaration)) {
-                const unknownSymbol = moduleSymbol.exports?.get(
-                  (hasAsName && !isDefault ? node.propertyName!.getText() : nodeName) as string & {
-                    __escapedIdentifier: void;
-                  },
-                );
-
-                if (unknownSymbol?.declarations?.[0]) {
-                  const externalImportModule = unknownSymbol.declarations[0];
-
-                  if (
-                    ts.isNamespaceImport(externalImportModule) ||
-                    ts.isImportClause(externalImportModule)
-                  ) {
-                    const packageName = ts.isNamespaceImport(externalImportModule)
-                      ? externalImportModule.parent.parent.moduleSpecifier.getText()
-                      : externalImportModule.parent.moduleSpecifier.getText();
-
-                    if (externalImportModule.name) {
-                      const identifierName = externalImportModule.name.getText();
-
-                      const reExportItem: ReExportModule = {
-                        identifierNameImport: identifierName,
-                        identifierNameExport: identifierName,
-                        isNameSpaceImport: true,
-                        asNameExport: hasAsName ? nodeName : undefined,
-                      };
-
-                      if (!acc.reExportsFromExternalModules.has(packageName)) {
-                        acc.reExportsFromExternalModules.set(packageName, [reExportItem]);
-                      } else {
-                        acc.reExportsFromExternalModules.get(packageName)!.push(reExportItem);
-                      }
-                    }
-
-                    return;
-                  }
-
-                  if (
-                    ts.isImportSpecifier(externalImportModule) ||
-                    ts.isExportSpecifier(externalImportModule)
-                  ) {
-                    let packageName = '';
-                    let isDefaultImport = false;
-                    let isNameSpaceImport = false;
-
-                    if (ts.isExportSpecifier(externalImportModule)) {
-                      if (!externalImportModule.parent.parent.moduleSpecifier) {
-                        const importDeclarations = sourceFile.statements.filter(
-                          ts.isImportDeclaration,
-                        );
-
-                        const targetImport = importDeclarations.find((importDecl) => {
-                          if (importDecl?.importClause?.namedBindings) {
-                            if (
-                              ts.isNamedImports(importDecl.importClause.namedBindings) &&
-                              importDecl.importClause.namedBindings.elements.length > 0
-                            ) {
-                              return importDecl.importClause.namedBindings.elements.some(
-                                (element) =>
-                                  element.name.getText() === externalImportModule.name.getText(),
-                              );
-                            }
-
-                            if (ts.isNamespaceImport(importDecl.importClause.namedBindings)) {
-                              isNameSpaceImport = true;
-
-                              return (
-                                externalImportModule.name.getText() ==
-                                importDecl.importClause.namedBindings.name.getText()
-                              );
-                            }
-                          }
-
-                          if (importDecl.importClause) {
-                            isDefaultImport =
-                              importDecl.importClause.name?.getText() ===
-                              externalImportModule.name.getText();
-
-                            return isDefaultImport;
-                          }
-
-                          return false;
-                        });
-
-                        if (targetImport) {
-                          packageName = targetImport.moduleSpecifier.getText();
-                        }
-                      } else {
-                        packageName = externalImportModule.parent.parent.moduleSpecifier.getText();
-                      }
-                    }
-
-                    if (ts.isImportSpecifier(externalImportModule)) {
-                      packageName =
-                        externalImportModule.parent.parent.parent.moduleSpecifier.getText();
-                    }
-
-                    if (!packageName) return;
-
-                    if (isDefault && node.propertyName) {
-                      acc.exportDefaultParsedNode = {
-                        astNode: externalImportModule,
-                        jsDoc: '',
-                        code: `const _default: import(${packageName}).${node.propertyName.getText()};${
-                          ts.sys.newLine
-                        }export default _default;`,
-                        name: '',
-                        linkedNodes: [],
-                      };
-
-                      return;
-                    }
-
-                    const reExportItem: ReExportModule = {
-                      isNameSpaceImport,
-                      isDefaultImport,
-                      identifierNameExport: externalImportModule.name.getText(),
-                      identifierNameImport: externalImportModule.propertyName
-                        ? externalImportModule.propertyName.getText()
-                        : externalImportModule.name.getText(),
-                      asNameImport: externalImportModule.propertyName
-                        ? externalImportModule.name.getText()
-                        : undefined,
-                      asNameExport: hasAsName ? nodeName : undefined,
+                  if (packageName) {
+                    const reExportModule: ReExportModule = {
+                      identifierNameExport: exportSymbol.name,
+                      identifierNameImport: exportSymbol.name,
+                      isNameSpaceImport: false,
+                      isDefaultImport: false,
+                      asNameExport: '',
+                      asNameImport: '',
                     };
 
                     if (!acc.reExportsFromExternalModules.has(packageName)) {
-                      acc.reExportsFromExternalModules.set(packageName, [reExportItem]);
+                      acc.reExportsFromExternalModules.set(packageName, [reExportModule]);
                     } else {
-                      acc.reExportsFromExternalModules.get(packageName)!.push(reExportItem);
+                      acc.reExportsFromExternalModules.get(packageName)!.push(reExportModule);
                     }
-
-                    return;
                   }
                 }
+
+                return acc;
               }
 
-              if (declaration) {
-                const parsedNode = parseNode(declaration);
+              const parsedNode = parseNode(exportNode);
 
-                if (parsedNode) {
-                  const parsedLinkedNodes = parseLinkedNodes(parsedNode);
+              if (parsedNode) {
+                const parsedLinkedNodes = parseLinkedNodes(parsedNode);
 
-                  parsedLinkedNodes?.forEach((linkedNode) => {
-                    acc.linkedParsedNodes.add(linkedNode);
-                  });
+                parsedLinkedNodes?.forEach((linkedNode) => {
+                  acc.linkedParsedNodes.add(linkedNode);
+                });
 
-                  if (hasAsName) {
-                    parsedNode.code = parsedNode.code.replace(
-                      new RegExp(`\\b${parsedNode.name}\\b`),
-                      nodeName,
-                    );
-                  }
-
-                  acc.exportedParsedNodes.add(parsedNode);
-                }
+                acc.exportedParsedNodes.add(parsedNode);
               }
             }
+
+            return acc;
           }
 
           // export default
           if (ts.isExportAssignment(node)) {
+            // TODO refactor
             const typeString = typeChecker.typeToString(
               typeChecker.getTypeAtLocation(node.expression),
               node.expression,
@@ -959,12 +877,37 @@ export const createParser = ({ typeChecker, stdLibTypes }: CreateParserOptions) 
             acc.exportDefaultParsedNode = {
               astNode: node.expression,
               jsDoc: '',
-              code: `const _default: ${replaceImport(typeString)};${
-                ts.sys.newLine
-              }export default _default;`,
+              code: `const _default: ${typeString};${ts.sys.newLine}export default _default;`,
               name: '',
               linkedNodes: [],
             };
+          }
+
+          if (isNodeFromPackage(node)) {
+            let packageName = '';
+
+            if (ts.isModuleBlock(node.parent)) {
+              packageName = node.parent.parent.name.getText();
+
+              if (packageName) {
+                const reExportModule: ReExportModule = {
+                  identifierNameExport: exportSymbol.name,
+                  identifierNameImport: exportSymbol.name,
+                  isNameSpaceImport: false,
+                  isDefaultImport: false,
+                  asNameExport: '',
+                  asNameImport: '',
+                };
+
+                if (!acc.reExportsFromExternalModules.has(packageName)) {
+                  acc.reExportsFromExternalModules.set(packageName, [reExportModule]);
+                } else {
+                  acc.reExportsFromExternalModules.get(packageName)!.push(reExportModule);
+                }
+              }
+            }
+
+            return acc;
           }
 
           const parsedNode = parseNode(node);
@@ -978,11 +921,12 @@ export const createParser = ({ typeChecker, stdLibTypes }: CreateParserOptions) 
 
             acc.exportedParsedNodes.add(parsedNode);
           }
-        });
-      }
+        }
 
-      return acc;
-    }, defaultParsedModule);
+        return acc;
+      },
+      defaultParsedModule,
+    );
 
     // Clearing caches after parsing every module
     visitedLinkedNodes.clear();

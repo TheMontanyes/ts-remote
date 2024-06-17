@@ -97,10 +97,15 @@ export const printModule = ({ moduleName, parsedModule, compilerOptions }: Print
             importItem.namespace = identifierNameImport;
           }
 
-          if (!isDefaultImport)
-            importItem.identifiers.push(
-              asNameImport ? `${identifierNameImport} as ${asNameImport}` : identifierNameImport,
-            );
+          if (!isDefaultImport) {
+            const importIdentifier = asNameImport
+              ? `${identifierNameImport} as ${asNameImport}`
+              : identifierNameImport;
+
+            if (!importItem.identifiers.includes(importIdentifier)) {
+              importItem.identifiers.push(importIdentifier);
+            }
+          }
         },
       );
 

@@ -19,33 +19,16 @@ export default async function main(options: CompilerOptions) {
   const program = ts.createProgram(
     exposeEntries.map(([_, fileName]) => fileName),
     {
+      ...compilerOptions,
+      module: ts.ModuleKind.CommonJS,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext,
       declaration: true,
       emitDeclarationOnly: true,
       noEmit: true,
-      paths: compilerOptions.paths,
-      baseUrl: compilerOptions.baseUrl,
     },
   );
 
-  const typeChecker = program.getTypeChecker();
-
-  const stdLibTypes = program.getSourceFiles().reduce((acc, sourceFile) => {
-    sourceFile.forEachChild((node) => {
-      if (
-        isFromStdLib(node) &&
-        (ts.isTypeAliasDeclaration(node) ||
-          ts.isInterfaceDeclaration(node) ||
-          ts.isEnumDeclaration(node))
-      ) {
-        if (node.name) {
-          acc.add(node.name.getText());
-        }
-      }
-    });
-    return acc;
-  }, new Set<string>());
-
-  const parser = createParser({ typeChecker, stdLibTypes });
+  const parser = createParser(program);
 
   let resultSourceCodeDTS = exposeEntries.reduce((acc, [moduleName, fileName]) => {
     const sourceFile = program.getSourceFile(fileName);
