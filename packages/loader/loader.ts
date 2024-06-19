@@ -2,13 +2,16 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { LoaderOptions } from './types';
 import { downloadFile } from './downloadFile';
+import * as process from 'process';
 
 const isTSFilename = (moduleRemotePath: string) => /\.ts$/.test(moduleRemotePath);
+
+const baseDestinationFolder = path.resolve(process.cwd(), '@types-remote');
 
 export const loader = async ({
   moduleList,
   requestOptions,
-  destinationFolder = '@types-remote',
+  destinationFolder = baseDestinationFolder,
 }: LoaderOptions) => {
   const moduleEntries = Object.entries(moduleList);
 

@@ -1,7 +1,15 @@
 {
   "name": "ts-remote",
   "version": "0.0.0",
-  "description": "Remote typescript types for remote js modules",
+  "description": "Solving the problem of transferring TypeScript type declarations between third-party javascript modules",
+  "keywords": [
+    "dts",
+    "ts remote",
+    "dts compiler",
+    "microfrontend",
+    "types",
+    "typescript"
+  ],
   "scripts": {
     "prettier:fix": "prettier ./packages/**/*.ts -l --write",
     "prettier:check": "prettier ./packages/**/*.ts -l --check",

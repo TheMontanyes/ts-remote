@@ -5,7 +5,7 @@ import { getCompilerOptions } from '../packages/lib';
 
 const cwd = process.cwd();
 
-const FILES_TO_COPY = ['package.json', 'LICENSE'] as const;
+const FILES_TO_COPY = ['package.json', 'LICENSE', 'README.md'] as const;
 const OUTPUT_DIR = 'dist';
 const OUTPUT_PATH = `${path.resolve(cwd, OUTPUT_DIR)}`;
 

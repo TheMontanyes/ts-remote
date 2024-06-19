@@ -53,14 +53,34 @@ export type ParsedModule = {
 export type ImportPath = string;
 export type ModuleName = string;
 
+/**
+ * A list in key-value format, where the key is the name of the declared module, and the value is the path to the entry point
+ * */
 export type ModuleList = Record<ModuleName, ImportPath>;
 
 export type CompilerOptions = {
+  /**
+   * A list in key-value format, where the key is the name of the declared module, and the value is the path to the entry point
+   * */
   moduleList: ModuleList;
+  /**
+   * d.ts files required for environment and concatenation with output.filename
+   * */
   additionalDeclarations?: string[];
   output: {
+    /**
+     * The path to the compiled file
+     * @default path.resolve(process.cwd(), '@types', 'types.d.ts')
+     * */
     filename?: string;
+    /**
+     * A method for processing the contents of a compiled file
+     * */
     format?: (result: string) => string;
   };
+  /**
+   * The path to tsconfig
+   * @default path.resolve(process.cwd(), 'tsconfig.json')
+   * */
   tsconfig?: string;
 };
