@@ -67,7 +67,7 @@ export type CompilerOptions = {
    * d.ts files required for environment and concatenation with output.filename
    * */
   additionalDeclarations?: string[];
-  output: {
+  output?: {
     /**
      * The path to the compiled file
      * @default path.resolve(process.cwd(), '@types', 'types.d.ts')

@@ -24,6 +24,8 @@ import path from 'path';
 
 const moduleList: ModuleList = {
   'moduleName': `./app/index.ts`,
+  'foo': `./app/foo.ts`,
+  'bar': `./app/bar.ts`,
   // ...others
 };
 
@@ -40,6 +42,26 @@ compiler({
 });
 ```
 
+#### Example output
+--> moduleName.d.ts
+```ts
+declare module "moduleName" {
+  {
+    type A = number
+  }
+  
+  const a: A
+}
+
+declare module "foo" {
+  // ..exports from module foo..
+}
+
+declare module "bar" {
+  // ..exports from module foo..
+}
+```
+
 ### Remote type loader
 
 ```ts
@@ -53,6 +75,6 @@ loader({
 });
 ```
 
-### Roadmap
+## Roadmap
 
 In the near future, it is planned to expand the functionality and use more [TypeScript](https://www.typescriptlang.org/) features.

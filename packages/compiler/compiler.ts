@@ -11,8 +11,12 @@ const baseOutputPath = path.resolve(cwd, '@types', 'types.d.ts');
 const baseOutputFormat = (result: string) => result;
 const baseTsConfigPath = path.resolve(cwd, 'tsconfig.json');
 
-export default async function main(options: CompilerOptions) {
-  const { moduleList, output, tsconfig, additionalDeclarations = [] } = options;
+export default async function main({
+  moduleList,
+  output = { filename: baseOutputPath, format: baseOutputFormat },
+  tsconfig,
+  additionalDeclarations = [],
+}: CompilerOptions) {
   const compilerOptions = getCompilerOptions(tsconfig || baseTsConfigPath);
   const exposeEntries = Object.entries(moduleList);
 
@@ -35,10 +39,10 @@ export default async function main(options: CompilerOptions) {
 
     if (sourceFile) {
       const parsedModule = parser(sourceFile);
+      const moduleText = printModule({ moduleName, parsedModule, options: { output } });
 
-      acc += `${printModule({ moduleName, parsedModule, compilerOptions: options })}${
-        ts.sys.newLine
-      }`;
+      acc += moduleText;
+      acc += ts.sys.newLine;
     } else {
       throw new Error(`Not found file at - ${fileName}`);
     }

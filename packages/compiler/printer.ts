@@ -43,12 +43,12 @@ export const printModifiers = (modifiers?: ts.NodeArray<ts.ModifierLike>): strin
 type PrintModuleOptions = {
   moduleName: string;
   parsedModule: ParsedModule;
-  compilerOptions: CompilerOptions;
+  options: Pick<CompilerOptions, 'output'>;
 };
 
-export const printModule = ({ moduleName, parsedModule, compilerOptions }: PrintModuleOptions) => {
-  const { output } = compilerOptions;
-  const isDTSOutput = output.filename?.endsWith('.d.ts');
+export const printModule = ({ moduleName, parsedModule, options }: PrintModuleOptions) => {
+  const { output } = options;
+  const isDTSOutput = output?.filename?.endsWith('.d.ts');
 
   let moduleSource = ``;
 
