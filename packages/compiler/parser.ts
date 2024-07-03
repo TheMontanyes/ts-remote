@@ -863,76 +863,93 @@ export const createParser = (program: ts.Program) => {
           } else {
             const hasAsName = Boolean(node.propertyName);
             const nodeName = hasAsName ? node.propertyName!.getText() : exportSymbol.name;
-
-            let importPath = '';
-            let isDefaultImport = false;
-            let isNameSpaceImport = false;
-
             const sourceFile = node.getSourceFile();
 
-            let importDeclaration: ts.ImportDeclaration | undefined;
-            let importSpecifier: ts.ImportSpecifier | undefined;
+            if (node.parent.parent.moduleSpecifier) {
+              let importPath = node.parent.parent.moduleSpecifier.getText();
 
-            sourceFile.statements.some((statement) => {
-              if (ts.isImportDeclaration(statement)) {
-                if (statement.importClause) {
-                  isDefaultImport = statement.importClause.getText() === nodeName;
+              if (importPath) {
+                const reExportModule: ReExportModule = {
+                  identifierNameExport: hasAsName ? node.propertyName!.getText() : nodeName,
+                  identifierNameImport: hasAsName ? node.propertyName!.getText() : nodeName,
+                  asNameExport: hasAsName ? node.name.getText() : '',
+                };
 
-                  if (isDefaultImport) {
-                    importDeclaration = statement;
-                    return true;
-                  }
+                if (!acc.reExportsFromExternalModules.has(importPath)) {
+                  acc.reExportsFromExternalModules.set(importPath, [reExportModule]);
+                } else {
+                  acc.reExportsFromExternalModules.get(importPath)!.push(reExportModule);
+                }
+              }
+            } else {
+              let importPath = '';
+              let isDefaultImport = false;
+              let isNameSpaceImport = false;
 
-                  if (statement.importClause.namedBindings) {
-                    if (ts.isNamespaceImport(statement.importClause.namedBindings)) {
-                      isNameSpaceImport =
-                        statement.importClause.namedBindings.name.getText() === nodeName;
+              let importDeclaration: ts.ImportDeclaration | undefined;
+              let importSpecifier: ts.ImportSpecifier | undefined;
 
-                      if (isNameSpaceImport) {
-                        importDeclaration = statement;
-                        return true;
-                      }
+              sourceFile.statements.some((statement) => {
+                if (ts.isImportDeclaration(statement)) {
+                  if (statement.importClause) {
+                    isDefaultImport = statement.importClause.getText() === nodeName;
+
+                    if (isDefaultImport) {
+                      importDeclaration = statement;
+                      return true;
                     }
 
-                    if (ts.isNamedImports(statement.importClause.namedBindings)) {
-                      const findedImportSpecifier =
-                        statement.importClause.namedBindings.elements.find((element) => {
-                          return element.name.getText() === nodeName;
-                        });
+                    if (statement.importClause.namedBindings) {
+                      if (ts.isNamespaceImport(statement.importClause.namedBindings)) {
+                        isNameSpaceImport =
+                          statement.importClause.namedBindings.name.getText() === nodeName;
 
-                      if (findedImportSpecifier) {
-                        importDeclaration = statement;
-                        importSpecifier = findedImportSpecifier;
-                        return true;
+                        if (isNameSpaceImport) {
+                          importDeclaration = statement;
+                          return true;
+                        }
+                      }
+
+                      if (ts.isNamedImports(statement.importClause.namedBindings)) {
+                        const findedImportSpecifier =
+                          statement.importClause.namedBindings.elements.find((element) => {
+                            return element.name.getText() === nodeName;
+                          });
+
+                        if (findedImportSpecifier) {
+                          importDeclaration = statement;
+                          importSpecifier = findedImportSpecifier;
+                          return true;
+                        }
                       }
                     }
                   }
                 }
+
+                return false;
+              });
+
+              if (importDeclaration) {
+                importPath = importDeclaration.moduleSpecifier.getText();
               }
 
-              return false;
-            });
+              if (importPath) {
+                const reExportModule: ReExportModule = {
+                  identifierNameExport: hasAsName ? node.propertyName!.getText() : nodeName,
+                  identifierNameImport: importSpecifier?.propertyName
+                    ? importSpecifier.propertyName.getText()
+                    : nodeName,
+                  isNameSpaceImport,
+                  isDefaultImport,
+                  asNameExport: hasAsName ? node.name.getText() : '',
+                  asNameImport: importSpecifier?.propertyName ? importSpecifier.name.getText() : '',
+                };
 
-            if (importDeclaration) {
-              importPath = importDeclaration.moduleSpecifier.getText();
-            }
-
-            if (importPath) {
-              const reExportModule: ReExportModule = {
-                identifierNameExport: hasAsName ? node.propertyName!.getText() : nodeName,
-                identifierNameImport: importSpecifier?.propertyName
-                  ? importSpecifier.propertyName.getText()
-                  : nodeName,
-                isNameSpaceImport,
-                isDefaultImport,
-                asNameExport: hasAsName ? node.name.getText() : '',
-                asNameImport: importSpecifier?.propertyName ? importSpecifier.name.getText() : '',
-              };
-
-              if (!acc.reExportsFromExternalModules.has(importPath)) {
-                acc.reExportsFromExternalModules.set(importPath, [reExportModule]);
-              } else {
-                acc.reExportsFromExternalModules.get(importPath)!.push(reExportModule);
+                if (!acc.reExportsFromExternalModules.has(importPath)) {
+                  acc.reExportsFromExternalModules.set(importPath, [reExportModule]);
+                } else {
+                  acc.reExportsFromExternalModules.get(importPath)!.push(reExportModule);
+                }
               }
             }
           }
