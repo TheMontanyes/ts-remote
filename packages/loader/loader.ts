@@ -1,18 +1,15 @@
-import path from 'node:path';
-import fs from 'node:fs';
+import path from 'path';
+import fs from 'fs';
 import { LoaderOptions } from './types';
 import { downloadFile } from './downloadFile';
-import * as process from 'process';
 
 const isTSFilename = (moduleRemotePath: string) => /\.ts$/.test(moduleRemotePath);
 
 const baseDestinationFolder = path.resolve(process.cwd(), '@types-remote');
 
-export const loader = async ({
-  moduleList,
-  requestOptions,
-  destinationFolder = baseDestinationFolder,
-}: LoaderOptions) => {
+export const loader = async (options: LoaderOptions) => {
+  const { moduleList, requestOptions, destinationFolder = baseDestinationFolder } = options;
+
   const moduleEntries = Object.entries(moduleList);
 
   if (!moduleEntries.length) return;
@@ -37,6 +34,7 @@ export const loader = async ({
         return downloadFile({
           filename: path.join(destinationFolder, destinationPath),
           requestOptions: {
+            rejectUnauthorized: false,
             method: 'GET',
             ...url,
             path: url.pathname,
@@ -44,8 +42,7 @@ export const loader = async ({
           },
         });
       } catch (error) {
-        console.error(`ts-remote: [ERROR] ${error}`);
-        return Promise.reject();
+        return Promise.reject(`ts-remote: [ERROR] ${error}`);
       }
     }),
   );

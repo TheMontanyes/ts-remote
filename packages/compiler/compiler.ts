@@ -3,7 +3,7 @@ import ts from 'typescript';
 import { createParser } from './parser';
 import { CompilerOptions } from './types';
 import { printModule } from './printer';
-import { getCompilerOptions, isFromStdLib } from '../lib';
+import { getCompilerOptions } from '../lib';
 
 const cwd = process.cwd();
 
@@ -11,13 +11,15 @@ const baseOutputPath = path.resolve(cwd, '@types', 'types.d.ts');
 const baseOutputFormat = (result: string) => result;
 const baseTsConfigPath = path.resolve(cwd, 'tsconfig.json');
 
-export default async function main({
-  moduleList,
-  output = { filename: baseOutputPath, format: baseOutputFormat },
-  tsconfig,
-  additionalDeclarations = [],
-}: CompilerOptions) {
-  const compilerOptions = getCompilerOptions(tsconfig || baseTsConfigPath);
+export default async function main(options: CompilerOptions) {
+  const {
+    moduleList,
+    output = { filename: baseOutputPath, format: baseOutputFormat },
+    tsconfig,
+    additionalDeclarations = [],
+  } = options;
+  const config = tsconfig || baseTsConfigPath;
+  const compilerOptions = getCompilerOptions(config);
   const exposeEntries = Object.entries(moduleList);
 
   const program = ts.createProgram(

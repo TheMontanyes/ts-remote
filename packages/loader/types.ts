@@ -1,4 +1,4 @@
-import https from 'node:https';
+import https from 'https';
 
 export type DestinationPath = string;
 export type ModuleRemotePath = string;
@@ -15,5 +15,5 @@ export type LoaderOptions = {
    * @default path.resolve(process.cwd(), '@types-remote')
    * */
   destinationFolder?: string;
-  requestOptions: https.RequestOptions;
+  requestOptions?: https.RequestOptions;
 };

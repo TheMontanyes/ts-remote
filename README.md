@@ -69,9 +69,6 @@ import { loader } from 'ts-remote/loader';
 
 loader({
   moduleList: { 'https://example.com/types/modeuleName.d.ts': '@types-remote-loaded/remote.d.ts' },
-  requestOptions: {
-    rejectUnauthorized: false,
-  },
 });
 ```
 

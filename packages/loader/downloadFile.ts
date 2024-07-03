@@ -1,6 +1,6 @@
-import https from 'node:https';
-import http from 'node:http';
-import fs from 'node:fs';
+import https from 'https';
+import http from 'http';
+import fs from 'fs';
 
 type DownloadOptions = {
   filename: string;
@@ -13,7 +13,7 @@ export const downloadFile = async ({ filename, requestOptions }: DownloadOptions
   let resolve: () => void;
   let reject: (reason?: unknown) => void;
   const promise = new Promise<void>((_resolve, _reject) => {
-    resolve = _resolve;
+    resolve = _resolve as () => void;
     reject = _reject;
   });
 
