@@ -143,13 +143,6 @@ export const createParser = (program: ts.Program) => {
         : '',
     };
 
-    const parsed = {
-      jsDoc: getJsDOC(declaration),
-      name: definition.identifierName,
-      code: printFunctionDeclarationDefinition(definition),
-      linkedNodes: [...searchLinkedNodes(declaration)],
-    } as ParsedNode;
-
     if (declaration.parameters.length > 0) {
       declaration.parameters.forEach((parameter) => {
         definition.parameters.push(
@@ -160,7 +153,12 @@ export const createParser = (program: ts.Program) => {
       });
     }
 
-    return parsed;
+    return {
+      jsDoc: getJsDOC(declaration),
+      name: definition.identifierName,
+      code: printFunctionDeclarationDefinition(definition),
+      linkedNodes: [...searchLinkedNodes(declaration)],
+    } as ParsedNode;
   };
 
   const parseVariableStatement = (statement: ts.VariableStatement) => {

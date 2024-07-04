@@ -140,10 +140,7 @@ export const printModule = ({ moduleName, parsedModule, options }: PrintModuleOp
   }
 
   if (parsedModule.linkedParsedNodes.size > 0) {
-    if (isDTSOutput) {
-      moduleSource += '{';
-      moduleSource += ts.sys.newLine;
-    }
+    let blockLinkedNodes = '';
 
     parsedModule.linkedParsedNodes.forEach((linkedParsedNode) => {
       if (!linkedParsedNode.code) return;
@@ -152,13 +149,20 @@ export const printModule = ({ moduleName, parsedModule, options }: PrintModuleOp
 
       linkedParsedNode.code = linkedParsedNode.code.replace('export ', '');
 
-      moduleSource += printParsedNode(linkedParsedNode);
-      moduleSource += ts.sys.newLine;
+      blockLinkedNodes += printParsedNode(linkedParsedNode);
+      blockLinkedNodes += ts.sys.newLine;
     });
 
-    if (isDTSOutput) {
-      moduleSource += '}';
-      moduleSource += ts.sys.newLine;
+    if (blockLinkedNodes !== '') {
+      if (isDTSOutput) {
+        moduleSource += '{';
+        moduleSource += ts.sys.newLine;
+        moduleSource += blockLinkedNodes;
+        moduleSource += '}';
+        moduleSource += ts.sys.newLine;
+      } else {
+        moduleSource += blockLinkedNodes;
+      }
     }
   }
 
