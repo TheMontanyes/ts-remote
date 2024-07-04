@@ -1,6 +1,6 @@
 {
   "name": "ts-remote",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Solving the problem of transferring TypeScript type declarations between third-party javascript modules",
   "keywords": [
     "dts",
