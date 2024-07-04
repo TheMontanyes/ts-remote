@@ -36,7 +36,10 @@ export const loader = async (options: LoaderOptions) => {
           requestOptions: {
             rejectUnauthorized: false,
             method: 'GET',
-            ...url,
+            host: url.host,
+            protocol: url.protocol,
+            port: url.port,
+            hostname: url.hostname,
             path: url.pathname,
             ...requestOptions,
           },
