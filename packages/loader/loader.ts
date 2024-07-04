@@ -29,10 +29,18 @@ export const loader = async (options: LoaderOptions) => {
           throw new Error(`The file extension must be ".ts" - ${destinationPath}`);
         }
 
+        const targetPath = path.resolve(destinationFolder, destinationPath);
+
+        if (!fs.existsSync(path.dirname(targetPath))) {
+          fs.mkdirSync(path.dirname(targetPath), {
+            recursive: true,
+          });
+        }
+
         const url = new URL(moduleRemotePath);
 
         return downloadFile({
-          filename: path.join(destinationFolder, destinationPath),
+          filename: targetPath,
           requestOptions: {
             rejectUnauthorized: false,
             method: 'GET',

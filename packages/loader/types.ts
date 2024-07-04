@@ -7,7 +7,7 @@ export type ModuleList = Record<ModuleRemotePath, DestinationPath>;
 
 export type LoaderOptions = {
   /**
-   * A list in key-value format, where the key is the path to download the typescript file, and the value is the path to the directory to save it relative to the destinationFolder.
+   * A list in key-value format, where the key is the path to download the typescript file, and the value is the path to the file to save it relative to the destination folder.
    * */
   moduleList: ModuleList;
   /**
