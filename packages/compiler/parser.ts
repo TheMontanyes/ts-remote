@@ -769,6 +769,7 @@ export const createParser = (program: ts.Program) => {
       exportedParsedNodes: new Set(),
       reExportsFromExternalModules: new Map(),
       exportDefaultParsedNode: undefined,
+      exportIdentifiers: new Map(),
     } as ParsedModule;
 
     if (!moduleSymbol) {
@@ -816,6 +817,7 @@ export const createParser = (program: ts.Program) => {
         if (ts.isExportSpecifier(node)) {
           const aliasedSymbol = typeChecker.getAliasedSymbol(exportSymbol);
           const declarations = aliasedSymbol?.declarations;
+          const isTypeOnly = node.isTypeOnly || node.parent.parent.isTypeOnly;
 
           if (declarations?.length) {
             const [exportNode] = declarations;
@@ -857,6 +859,8 @@ export const createParser = (program: ts.Program) => {
               });
 
               acc.exportedParsedNodes.add(parsedNode);
+
+              acc.exportIdentifiers.set(parsedNode.name, { name: parsedNode.name, isTypeOnly });
             }
           } else {
             const hasAsName = Boolean(node.propertyName);
@@ -1010,6 +1014,8 @@ export const createParser = (program: ts.Program) => {
           });
 
           acc.exportedParsedNodes.add(parsedNode);
+
+          acc.exportIdentifiers.set(parsedNode.name, { name: parsedNode.name, isTypeOnly: false });
         }
       }
 

@@ -139,40 +139,56 @@ export const printModule = ({ moduleName, parsedModule, options }: PrintModuleOp
     });
   }
 
-  if (parsedModule.linkedParsedNodes.size > 0) {
-    let blockLinkedNodes = '';
-
-    parsedModule.linkedParsedNodes.forEach((linkedParsedNode) => {
-      if (!linkedParsedNode.code) return;
-
-      if (parsedModule.exportedParsedNodes.has(linkedParsedNode)) return;
-
-      linkedParsedNode.code = linkedParsedNode.code.replace('export ', '');
-
-      blockLinkedNodes += printParsedNode(linkedParsedNode);
-      blockLinkedNodes += ts.sys.newLine;
-    });
-
-    if (blockLinkedNodes !== '') {
-      if (isDTSOutput) {
-        moduleSource += '{';
-        moduleSource += ts.sys.newLine;
-        moduleSource += blockLinkedNodes;
-        moduleSource += '}';
-        moduleSource += ts.sys.newLine;
-      } else {
-        moduleSource += blockLinkedNodes;
-      }
-    }
-  }
-
   if (parsedModule.exportedParsedNodes.size > 0) {
+    moduleSource += '{';
+    moduleSource += ts.sys.newLine;
+
+    if (parsedModule.linkedParsedNodes.size > 0) {
+      parsedModule.linkedParsedNodes.forEach((linkedParsedNode) => {
+        if (!linkedParsedNode.code) return;
+
+        if (parsedModule.exportedParsedNodes.has(linkedParsedNode)) return;
+
+        linkedParsedNode.code = linkedParsedNode.code.replace('export ', '');
+
+        moduleSource += printParsedNode(linkedParsedNode);
+        moduleSource += ts.sys.newLine;
+      });
+    }
+
     parsedModule.exportedParsedNodes.forEach((parsedNode) => {
       if (!parsedNode.code) return;
 
       moduleSource += printParsedNode(parsedNode);
       moduleSource += ts.sys.newLine;
     });
+
+    moduleSource += '}';
+    moduleSource += ts.sys.newLine;
+
+    const exportList = [...parsedModule.exportIdentifiers.values()];
+    const { typeOnlyExports, exports } = exportList.reduce(
+      (acc, { name, isTypeOnly }) => {
+        if (isTypeOnly) {
+          acc.typeOnlyExports.push(name);
+        } else {
+          acc.exports.push(name);
+        }
+
+        return acc;
+      },
+      { typeOnlyExports: [], exports: [] } as { typeOnlyExports: string[]; exports: string[] },
+    );
+
+    if (exports.length > 0) {
+      moduleSource += `export { ${exports.join(',')} }`;
+      moduleSource += ts.sys.newLine;
+    }
+
+    if (typeOnlyExports.length > 0) {
+      moduleSource += `export type { ${typeOnlyExports.join(',')} }`;
+      moduleSource += ts.sys.newLine;
+    }
   }
 
   if (reExportsIdentifiers.length > 0) {

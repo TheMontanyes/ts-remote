@@ -48,6 +48,13 @@ export type ParsedModule = {
   exportedParsedNodes: Set<ParsedNode>;
   linkedParsedNodes: Set<ParsedNode>;
   exportDefaultParsedNode?: ParsedNode;
+  exportIdentifiers: Map<
+    string,
+    {
+      isTypeOnly: boolean;
+      name: string;
+    }
+  >;
 };
 
 export type ImportPath = string;
