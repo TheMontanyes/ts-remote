@@ -34,6 +34,10 @@ export type ParsedNode = {
   astNode: ts.Node;
 };
 
+export type ExportedParsedNode = ParsedNode & {
+  isTypeOnly: boolean;
+};
+
 export type ReExportModule = {
   identifierNameExport: string;
   identifierNameImport: string;
@@ -45,16 +49,9 @@ export type ReExportModule = {
 
 export type ParsedModule = {
   reExportsFromExternalModules: Map<string, ReExportModule[]>;
-  exportedParsedNodes: Set<ParsedNode>;
+  exportedParsedNodes: Set<ExportedParsedNode | ParsedNode>;
   linkedParsedNodes: Set<ParsedNode>;
   exportDefaultParsedNode?: ParsedNode;
-  exportIdentifiers: Map<
-    string,
-    {
-      isTypeOnly: boolean;
-      name: string;
-    }
-  >;
 };
 
 export type ImportPath = string;
@@ -84,6 +81,12 @@ export type CompilerOptions = {
      * A method for processing the contents of a compiled file
      * */
     format?: (result: string) => string;
+    /**
+     * Hides related declarations in a private scope
+     * @default false
+     * */
+    relatedDeclarationsAsPrivate?: boolean;
+    privateNamespaceName?: string;
   };
   /**
    * The path to tsconfig

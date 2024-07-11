@@ -21,6 +21,27 @@ const printParsedNode = ({ code, jsDoc }: ParsedNode) => {
   return result;
 };
 
+function getKeywordFromNode(node: ts.Node) {
+  if (!node) return '';
+
+  switch (node.kind) {
+    case ts.SyntaxKind.VariableDeclaration:
+      return 'const';
+    case ts.SyntaxKind.FunctionDeclaration:
+      return 'function';
+    case ts.SyntaxKind.TypeAliasDeclaration:
+      return 'type';
+    case ts.SyntaxKind.InterfaceDeclaration:
+      return 'interface';
+    case ts.SyntaxKind.ClassDeclaration:
+      return 'class';
+    case ts.SyntaxKind.EnumDeclaration:
+      return 'enum';
+    default:
+      return '';
+  }
+}
+
 export const printModifiers = (modifiers?: ts.NodeArray<ts.ModifierLike>): string[] => {
   if (!modifiers) return [];
 
@@ -48,7 +69,10 @@ type PrintModuleOptions = {
 
 export const printModule = ({ moduleName, parsedModule, options }: PrintModuleOptions) => {
   const { output } = options;
-  const isDTSOutput = output?.filename?.endsWith('.d.ts');
+
+  const relatedDeclarationsAsPrivate =
+    (output?.relatedDeclarationsAsPrivate ?? false) && parsedModule.linkedParsedNodes.size > 0;
+  const PRIVATE_NS = output?.privateNamespaceName ?? 'PRIVATE_NS';
 
   let moduleSource = ``;
 
@@ -140,8 +164,15 @@ export const printModule = ({ moduleName, parsedModule, options }: PrintModuleOp
   }
 
   if (parsedModule.exportedParsedNodes.size > 0) {
-    moduleSource += '{';
-    moduleSource += ts.sys.newLine;
+    if (relatedDeclarationsAsPrivate) {
+      moduleSource += '{';
+      moduleSource += ts.sys.newLine;
+
+      moduleSource += `namespace ${PRIVATE_NS}`;
+      moduleSource += ' ';
+      moduleSource += '{';
+      moduleSource += ts.sys.newLine;
+    }
 
     if (parsedModule.linkedParsedNodes.size > 0) {
       parsedModule.linkedParsedNodes.forEach((linkedParsedNode) => {
@@ -156,38 +187,50 @@ export const printModule = ({ moduleName, parsedModule, options }: PrintModuleOp
       });
     }
 
+    const exportedDeclarations = new Set<string>();
+
     parsedModule.exportedParsedNodes.forEach((parsedNode) => {
       if (!parsedNode.code) return;
+
+      if (relatedDeclarationsAsPrivate) {
+        const keyword = getKeywordFromNode(parsedNode.astNode);
+
+        if (keyword) {
+          switch (keyword) {
+            case 'class':
+            case 'interface':
+              exportedDeclarations.add(
+                `${keyword} ${parsedNode.name} extends ${PRIVATE_NS}["${parsedNode.name}"] {}`,
+              );
+              break;
+            case 'enum':
+            case 'function':
+              exportedDeclarations.add(
+                `const ${parsedNode.name} = ${PRIVATE_NS}["${parsedNode.name}"]`,
+              );
+              break;
+            default:
+              exportedDeclarations.add(
+                `${keyword} ${parsedNode.name} = ${PRIVATE_NS}["${parsedNode.name}"]`,
+              );
+          }
+        }
+      }
 
       moduleSource += printParsedNode(parsedNode);
       moduleSource += ts.sys.newLine;
     });
 
-    moduleSource += '}';
-    moduleSource += ts.sys.newLine;
-
-    const exportList = [...parsedModule.exportIdentifiers.values()];
-    const { typeOnlyExports, exports } = exportList.reduce(
-      (acc, { name, isTypeOnly }) => {
-        if (isTypeOnly) {
-          acc.typeOnlyExports.push(name);
-        } else {
-          acc.exports.push(name);
-        }
-
-        return acc;
-      },
-      { typeOnlyExports: [], exports: [] } as { typeOnlyExports: string[]; exports: string[] },
-    );
-
-    if (exports.length > 0) {
-      moduleSource += `export { ${exports.join(',')} }`;
+    if (relatedDeclarationsAsPrivate) {
+      moduleSource += '}';
       moduleSource += ts.sys.newLine;
-    }
-
-    if (typeOnlyExports.length > 0) {
-      moduleSource += `export type { ${typeOnlyExports.join(',')} }`;
+      moduleSource += '}';
       moduleSource += ts.sys.newLine;
+
+      exportedDeclarations.forEach((declaration) => {
+        moduleSource += declaration;
+        moduleSource += ts.sys.newLine;
+      });
     }
   }
 

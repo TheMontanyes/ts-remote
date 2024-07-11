@@ -2,6 +2,7 @@ import ts from 'typescript';
 
 import {
   ClassDeclarationDefinition,
+  ExportedParsedNode,
   FunctionDeclarationDefinition,
   ParsedModule,
   ParsedNode,
@@ -158,6 +159,7 @@ export const createParser = (program: ts.Program) => {
       name: definition.identifierName,
       code: printFunctionDeclarationDefinition(definition),
       linkedNodes: [...searchLinkedNodes(declaration)],
+      astNode: declaration,
     } as ParsedNode;
   };
 
@@ -806,6 +808,7 @@ export const createParser = (program: ts.Program) => {
                 linkedNodes: [],
                 astNode: node,
                 jsDoc: '',
+                isTypeOnly: false,
               });
             }
           }
@@ -858,9 +861,9 @@ export const createParser = (program: ts.Program) => {
                 acc.linkedParsedNodes.add(linkedNode);
               });
 
-              acc.exportedParsedNodes.add(parsedNode);
-
-              acc.exportIdentifiers.set(parsedNode.name, { name: parsedNode.name, isTypeOnly });
+              const exportedParsedNode = parsedNode as ExportedParsedNode;
+              exportedParsedNode.isTypeOnly = isTypeOnly;
+              acc.exportedParsedNodes.add(exportedParsedNode);
             }
           } else {
             const hasAsName = Boolean(node.propertyName);
@@ -1013,9 +1016,9 @@ export const createParser = (program: ts.Program) => {
             acc.linkedParsedNodes.add(linkedNode);
           });
 
-          acc.exportedParsedNodes.add(parsedNode);
-
-          acc.exportIdentifiers.set(parsedNode.name, { name: parsedNode.name, isTypeOnly: false });
+          const exportedParsedNode = parsedNode as ExportedParsedNode;
+          exportedParsedNode.isTypeOnly = false;
+          acc.exportedParsedNodes.add(exportedParsedNode);
         }
       }
 
