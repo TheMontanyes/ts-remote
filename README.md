@@ -1,4 +1,4 @@
-# ts-remote v1.0.6
+# ts-remote v1.0.7
 
 [![npm version](https://badge.fury.io/js/ts-remote.svg)](https://www.npmjs.com/package/ts-remote)
 
