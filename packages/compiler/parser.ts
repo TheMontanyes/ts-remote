@@ -107,6 +107,26 @@ export const createParser = (program: ts.Program) => {
       parsed.code = printVariableDeclarationDefinition(definition);
 
       if (expression) {
+        if (ts.isCallOrNewExpression(expression)) {
+          const resolvedTypeArguments = (
+            type as ts.Type & { resolvedTypeArguments: ts.Type[] | undefined }
+          ).resolvedTypeArguments;
+
+          if (resolvedTypeArguments?.length) {
+            resolvedTypeArguments.forEach((typeArgument) => {
+              const symbol = typeArgument.aliasSymbol;
+
+              if (symbol) {
+                const { declarations } = symbol;
+
+                if (declarations?.length) {
+                  parsed.linkedNodes.push(...declarations);
+                }
+              }
+            });
+          }
+        }
+
         const nodes = searchLinkedNodes(
           ts.isAsExpression(expression) ? expression.type : expression,
         );
@@ -554,8 +574,26 @@ export const createParser = (program: ts.Program) => {
         resultMember += `${member.name?.getText()}: ${replaceImport(typeStringMember)}`;
 
         if (member.initializer && ts.isCallOrNewExpression(member.initializer)) {
-          const type = typeChecker.getTypeAtLocation(member.initializer.expression);
-          const sourceFile = type.symbol.valueDeclaration?.getSourceFile();
+          const expressionType = typeChecker.getTypeAtLocation(member.initializer.expression);
+          const sourceFile = expressionType.symbol.valueDeclaration?.getSourceFile();
+
+          const resolvedTypeArguments = (
+            type as ts.Type & { resolvedTypeArguments: ts.Type[] | undefined }
+          ).resolvedTypeArguments;
+
+          if (resolvedTypeArguments?.length) {
+            resolvedTypeArguments.forEach((typeArgument) => {
+              const symbol = typeArgument.aliasSymbol;
+
+              if (symbol) {
+                const { declarations } = symbol;
+
+                if (declarations?.length) {
+                  parsed.linkedNodes.push(...declarations);
+                }
+              }
+            });
+          }
 
           if (
             sourceFile &&
@@ -686,9 +724,12 @@ export const createParser = (program: ts.Program) => {
           if (idx > 0) {
             const newName = `${parsed.name}_${idx}`;
 
-            parsed.code = parsed.code.replace(new RegExp(`\\b${parsed.name}\\b`), newName);
+            parsed.code = parsed.code.replace(new RegExp(`\\b${parsed.name}\\b`, 'g'), newName);
 
-            parsedNode.code = parsedNode.code.replace(new RegExp(`\\b${parsed.name}\\b`), newName);
+            parsedNode.code = parsedNode.code.replace(
+              new RegExp(`\\b${parsed.name}\\b`, 'g'),
+              newName,
+            );
 
             collectionParsedNodes.set(parsed.astNode, parsed);
           }

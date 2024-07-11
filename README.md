@@ -46,9 +46,7 @@ compiler({
 --> moduleName.d.ts
 ```ts
 declare module "moduleName" {
-  {
-    type A = number
-  }
+  type A = number
   
   const a: A
 }
