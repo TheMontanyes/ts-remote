@@ -204,7 +204,12 @@ export const printModule = ({ moduleName, parsedModule, options }: PrintModuleOp
               );
               break;
             case 'enum':
-              exportedDeclarations.add(parsedNode.code);
+              exportedDeclarations.add(
+                `const ${parsedNode.name} = ${PRIVATE_NS}["${parsedNode.name}"]`,
+              );
+              exportedDeclarations.add(
+                `type ${parsedNode.name} = ${PRIVATE_NS}["${parsedNode.name}"][keyof ${PRIVATE_NS}["${parsedNode.name}"]]`,
+              );
               break;
             case 'function':
               exportedDeclarations.add(
