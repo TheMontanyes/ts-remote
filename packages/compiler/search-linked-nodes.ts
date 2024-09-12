@@ -183,10 +183,16 @@ export const createSearchLinkedNodes = (typeChecker: ts.TypeChecker) => {
       } else {
         const symbolAtLocation = typeChecker.getSymbolAtLocation(node.exprName);
 
-        const declaration = symbolAtLocation?.declarations?.[0];
+        if (symbolAtLocation) {
+          const aliasedSymbol = isCanBeAliasSymbol(symbolAtLocation)
+            ? typeChecker.getAliasedSymbol(symbolAtLocation)
+            : symbolAtLocation;
 
-        if (declaration) {
-          addToCollection(declaration, collection);
+          const declaration = aliasedSymbol.declarations?.[0];
+
+          if (declaration) {
+            addToCollection(declaration, collection);
+          }
         }
       }
     }

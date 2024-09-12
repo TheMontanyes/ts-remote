@@ -4,6 +4,7 @@ import {
   ClassDeclarationDefinition,
   ExportedParsedNode,
   FunctionDeclarationDefinition,
+  LinkedParsedNode,
   ParsedModule,
   ParsedNode,
   ReExportModule,
@@ -94,6 +95,16 @@ export const createParser = (program: ts.Program) => {
       astNode: declaration,
     };
 
+    const expression = declaration.initializer;
+
+    if (expression && (ts.isFunctionLike(expression) || ts.isNewExpression(expression))) {
+      const nodes = searchLinkedNodes(expression);
+
+      if (nodes.length > 0) {
+        parsed.linkedNodes.push(...nodes);
+      }
+    }
+
     if (declaration.type) {
       const nodes = searchLinkedNodes(declaration.type);
 
@@ -101,8 +112,6 @@ export const createParser = (program: ts.Program) => {
         parsed.linkedNodes.push(...nodes);
       }
     } else {
-      const expression = declaration.initializer;
-
       definition.typeAnnotation = replaceImport(definition.typeAnnotation);
       parsed.code = printVariableDeclarationDefinition(definition);
 
@@ -692,7 +701,7 @@ export const createParser = (program: ts.Program) => {
   const visitedLinkedNodes = new Set<string>();
   const collisionsMap = new Map<string, Set<string>>();
 
-  const parseLinkedNodes = (parsedNode: ParsedNode): Set<ParsedNode> | undefined => {
+  const parseLinkedNodes = (parsedNode: ParsedNode): Set<LinkedParsedNode> | undefined => {
     const keyVisited = `${parsedNode.name}_${parsedNode.linkedNodes.length}`;
 
     if (parsedNode.linkedNodes.length === 0 || visitedLinkedNodes.has(keyVisited)) return;
@@ -700,17 +709,22 @@ export const createParser = (program: ts.Program) => {
     visitedLinkedNodes.add(keyVisited);
 
     return parsedNode.linkedNodes.reduce((acc, node) => {
-      const parsed = parseNode(node);
+      const parsed = parseNode(node) as LinkedParsedNode;
 
       if (parsed) {
+        parsed.parentParsedNode = parsedNode;
+
         if (!collisionsMap.has(parsed.name)) {
           collisionsMap.set(parsed.name, new Set());
         }
 
         const list = collisionsMap.get(parsed.name)!;
         const fileName = parsed.astNode.getSourceFile().fileName;
+        const regExp = new RegExp(`\\b${parsed.name}\\b`, 'g');
+        const sourceFileText = parsedNode.astNode.getSourceFile().text;
+        const hasCollision = stdLibIdentifierNames.has(parsed.name) && !regExp.test(sourceFileText);
 
-        if (stdLibIdentifierNames.has(parsed.name)) {
+        if (hasCollision) {
           list.add(parsed.name + parsedNode.name);
         }
 
@@ -724,12 +738,9 @@ export const createParser = (program: ts.Program) => {
           if (idx > 0) {
             const newName = `${parsed.name}_${idx}`;
 
-            parsed.code = parsed.code.replace(new RegExp(`\\b${parsed.name}\\b`, 'g'), newName);
+            parsed.code = parsed.code.replace(regExp, newName);
 
-            parsedNode.code = parsedNode.code.replace(
-              new RegExp(`\\b${parsed.name}\\b`, 'g'),
-              newName,
-            );
+            parsedNode.code = parsedNode.code.replace(regExp, newName);
 
             collectionParsedNodes.set(parsed.astNode, parsed);
           }
@@ -801,7 +812,7 @@ export const createParser = (program: ts.Program) => {
       }
 
       return acc;
-    }, new Set<ParsedNode>());
+    }, new Set<LinkedParsedNode>());
   };
 
   return (sourceFile: ts.SourceFile): ParsedModule => {

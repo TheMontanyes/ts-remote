@@ -7,6 +7,7 @@ import {
   VariableDeclarationDefinition,
 } from './types';
 import ts from 'typescript';
+import { createRegexpIdentifier } from '../lib';
 
 const printParsedNode = ({ code, jsDoc }: ParsedNode) => {
   let result = '';
@@ -72,9 +73,43 @@ export const printModule = ({ moduleName, parsedModule, options }: PrintModuleOp
 
   const relatedDeclarationsAsPrivate =
     (output?.relatedDeclarationsAsPrivate ?? false) && parsedModule.linkedParsedNodes.size > 0;
-  const PRIVATE_NS = output?.privateNamespaceName ?? 'PRIVATE_NS';
+  const INTERNAL_IMPORT = `#internal/${moduleName}`;
 
   let moduleSource = ``;
+
+  if (relatedDeclarationsAsPrivate) {
+    moduleSource += ts.ScriptElementKindModifier.ambientModifier;
+    moduleSource += ' ';
+    moduleSource += ts.ScriptElementKind.moduleElement;
+    moduleSource += ' ';
+    moduleSource += `"${INTERNAL_IMPORT}"`;
+    moduleSource += ' ';
+    moduleSource += '{';
+    moduleSource += ts.sys.newLine;
+
+    parsedModule.linkedParsedNodes.forEach((linkedParsedNode) => {
+      if (!linkedParsedNode.code) return;
+
+      if (parsedModule.exportedParsedNodes.has(linkedParsedNode)) return;
+
+      const parentParsedNode = [...parsedModule.exportedParsedNodes].find(
+        (node) => linkedParsedNode.parentParsedNode === node,
+      );
+
+      if (parentParsedNode) {
+        parentParsedNode.code = parentParsedNode.code.replace(
+          createRegexpIdentifier(linkedParsedNode.name),
+          `import("${INTERNAL_IMPORT}").${linkedParsedNode.name}`,
+        );
+      }
+
+      moduleSource += printParsedNode(linkedParsedNode);
+      moduleSource += ts.sys.newLine;
+    });
+
+    moduleSource += '}';
+    moduleSource += ts.sys.newLine;
+  }
 
   moduleSource += ts.ScriptElementKindModifier.ambientModifier;
   moduleSource += ' ';
@@ -164,86 +199,25 @@ export const printModule = ({ moduleName, parsedModule, options }: PrintModuleOp
   }
 
   if (parsedModule.exportedParsedNodes.size > 0) {
-    if (relatedDeclarationsAsPrivate) {
-      moduleSource += '{';
-      moduleSource += ts.sys.newLine;
-
-      moduleSource += `namespace ${PRIVATE_NS}`;
-      moduleSource += ' ';
-      moduleSource += '{';
-      moduleSource += ts.sys.newLine;
-    }
-
-    if (parsedModule.linkedParsedNodes.size > 0) {
+    if (parsedModule.linkedParsedNodes.size > 0 && !relatedDeclarationsAsPrivate) {
       parsedModule.linkedParsedNodes.forEach((linkedParsedNode) => {
         if (!linkedParsedNode.code) return;
 
         if (parsedModule.exportedParsedNodes.has(linkedParsedNode)) return;
 
-        linkedParsedNode.code = linkedParsedNode.code.replace('export ', '');
+        linkedParsedNode.code = linkedParsedNode.code.replace(/export(\s?)/, '');
 
         moduleSource += printParsedNode(linkedParsedNode);
         moduleSource += ts.sys.newLine;
       });
     }
 
-    const exportedDeclarations = new Set<string>();
-
     parsedModule.exportedParsedNodes.forEach((parsedNode) => {
       if (!parsedNode.code) return;
-
-      if (relatedDeclarationsAsPrivate) {
-        const keyword = getKeywordFromNode(parsedNode.astNode);
-
-        if (keyword) {
-          switch (keyword) {
-            case 'class':
-            case 'interface':
-              exportedDeclarations.add(
-                `${keyword} ${parsedNode.name} extends ${PRIVATE_NS}["${parsedNode.name}"] {}`,
-              );
-              break;
-            case 'enum':
-              const isTypeOnly = 'isTypeOnly' in parsedNode && parsedNode.isTypeOnly;
-
-              if (!isTypeOnly) {
-                exportedDeclarations.add(
-                  `const ${parsedNode.name} = ${PRIVATE_NS}["${parsedNode.name}"]`,
-                );
-              }
-
-              exportedDeclarations.add(
-                `type ${parsedNode.name} = ${PRIVATE_NS}["${parsedNode.name}"][keyof ${PRIVATE_NS}["${parsedNode.name}"]]`,
-              );
-              break;
-            case 'function':
-              exportedDeclarations.add(
-                `const ${parsedNode.name} = ${PRIVATE_NS}["${parsedNode.name}"]`,
-              );
-              break;
-            default:
-              exportedDeclarations.add(
-                `${keyword} ${parsedNode.name} = ${PRIVATE_NS}["${parsedNode.name}"]`,
-              );
-          }
-        }
-      }
 
       moduleSource += printParsedNode(parsedNode);
       moduleSource += ts.sys.newLine;
     });
-
-    if (relatedDeclarationsAsPrivate) {
-      moduleSource += '}';
-      moduleSource += ts.sys.newLine;
-      moduleSource += '}';
-      moduleSource += ts.sys.newLine;
-
-      exportedDeclarations.forEach((declaration) => {
-        moduleSource += declaration;
-        moduleSource += ts.sys.newLine;
-      });
-    }
   }
 
   if (reExportsIdentifiers.length > 0) {
