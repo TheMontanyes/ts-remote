@@ -84,6 +84,7 @@ export type CompilerOptions = {
      * */
     format?: (result: string) => string;
     /**
+     * [EXPERIMENTAL]
      * Hides related declarations in a private scope
      * @default false
      * */

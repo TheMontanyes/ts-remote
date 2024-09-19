@@ -98,7 +98,7 @@ export const printModule = ({ moduleName, parsedModule, options }: PrintModuleOp
         (node) => linkedParsedNode.parentParsedNode === node,
       );
 
-      if (parentParsedNode) {
+      if (parentParsedNode && linkedParsedNode.name !== parentParsedNode.name) {
         parentParsedNode.code = parentParsedNode.code.replace(
           createRegexpIdentifier(linkedParsedNode.name),
           `import("${INTERNAL_IMPORT}").${linkedParsedNode.name}`,

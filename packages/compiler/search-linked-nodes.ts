@@ -290,7 +290,6 @@ export const createSearchLinkedNodes = (typeChecker: ts.TypeChecker) => {
       }
 
       if (node.type) {
-        console.log(node.type.getText(), node.type.kind);
         addToCollection(node.type, collection);
       }
     }
