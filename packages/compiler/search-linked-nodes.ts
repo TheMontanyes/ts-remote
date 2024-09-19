@@ -290,6 +290,7 @@ export const createSearchLinkedNodes = (typeChecker: ts.TypeChecker) => {
       }
 
       if (node.type) {
+        console.log(node.type.getText(), node.type.kind);
         addToCollection(node.type, collection);
       }
     }
@@ -298,6 +299,10 @@ export const createSearchLinkedNodes = (typeChecker: ts.TypeChecker) => {
       node.types.forEach((typeNode) => {
         addToCollection(typeNode, collection);
       });
+    }
+
+    if (ts.isParenthesizedTypeNode(node)) {
+      addToCollection(node.type, collection);
     }
 
     if (ts.isIndexedAccessTypeNode(node)) {
