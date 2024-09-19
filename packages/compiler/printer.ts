@@ -90,7 +90,9 @@ export const printModule = ({ moduleName, parsedModule, options }: PrintModuleOp
     parsedModule.linkedParsedNodes.forEach((linkedParsedNode) => {
       if (!linkedParsedNode.code) return;
 
-      if (parsedModule.exportedParsedNodes.has(linkedParsedNode)) return;
+      if (parsedModule.exportedParsedNodes.has(linkedParsedNode) && !relatedDeclarationsAsPrivate) {
+        return;
+      }
 
       const parentParsedNode = [...parsedModule.exportedParsedNodes].find(
         (node) => linkedParsedNode.parentParsedNode === node,
