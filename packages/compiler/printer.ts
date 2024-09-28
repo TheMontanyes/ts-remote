@@ -7,7 +7,6 @@ import {
   VariableDeclarationDefinition,
 } from './types';
 import ts from 'typescript';
-import { createRegexpIdentifier } from '../lib';
 
 const printParsedNode = ({ code, jsDoc }: ParsedNode) => {
   let result = '';
@@ -22,29 +21,8 @@ const printParsedNode = ({ code, jsDoc }: ParsedNode) => {
   return result;
 };
 
-function getKeywordFromNode(node: ts.Node) {
-  if (!node) return '';
-
-  switch (node.kind) {
-    case ts.SyntaxKind.VariableDeclaration:
-      return 'const';
-    case ts.SyntaxKind.FunctionDeclaration:
-      return 'function';
-    case ts.SyntaxKind.TypeAliasDeclaration:
-      return 'type';
-    case ts.SyntaxKind.InterfaceDeclaration:
-      return 'interface';
-    case ts.SyntaxKind.ClassDeclaration:
-      return 'class';
-    case ts.SyntaxKind.EnumDeclaration:
-      return 'enum';
-    default:
-      return '';
-  }
-}
-
 export const printModifiers = (modifiers?: ts.NodeArray<ts.ModifierLike>): string[] => {
-  if (!modifiers) return [];
+  if (!modifiers?.length) return [];
 
   return modifiers.reduce((acc: string[], modifier) => {
     if (
@@ -53,6 +31,7 @@ export const printModifiers = (modifiers?: ts.NodeArray<ts.ModifierLike>): strin
         ts.SyntaxKind.ExportKeyword,
         ts.SyntaxKind.DeclareKeyword,
         ts.SyntaxKind.Decorator,
+        ts.SyntaxKind.DefaultKeyword,
       ].includes(modifier.kind)
     ) {
       acc.push(modifier.getText());
@@ -87,27 +66,14 @@ export const printModule = ({ moduleName, parsedModule, options }: PrintModuleOp
     moduleSource += '{';
     moduleSource += ts.sys.newLine;
 
-    parsedModule.linkedParsedNodes.forEach((linkedParsedNode) => {
-      if (!linkedParsedNode.code) return;
+    new Set([...parsedModule.linkedParsedNodes, ...parsedModule.exportedParsedNodes]).forEach(
+      (linkedParsedNode) => {
+        if (!linkedParsedNode.code) return;
 
-      if (parsedModule.exportedParsedNodes.has(linkedParsedNode) && !relatedDeclarationsAsPrivate) {
-        return;
-      }
-
-      const parentParsedNode = [...parsedModule.exportedParsedNodes].find(
-        (node) => linkedParsedNode.parentParsedNode === node,
-      );
-
-      if (parentParsedNode && linkedParsedNode.name !== parentParsedNode.name) {
-        parentParsedNode.code = parentParsedNode.code.replace(
-          createRegexpIdentifier(linkedParsedNode.name),
-          `import("${INTERNAL_IMPORT}").${linkedParsedNode.name}`,
-        );
-      }
-
-      moduleSource += printParsedNode(linkedParsedNode);
-      moduleSource += ts.sys.newLine;
-    });
+        moduleSource += printParsedNode(linkedParsedNode);
+        moduleSource += ts.sys.newLine;
+      },
+    );
 
     moduleSource += '}';
     moduleSource += ts.sys.newLine;
@@ -201,25 +167,36 @@ export const printModule = ({ moduleName, parsedModule, options }: PrintModuleOp
   }
 
   if (parsedModule.exportedParsedNodes.size > 0) {
-    if (parsedModule.linkedParsedNodes.size > 0 && !relatedDeclarationsAsPrivate) {
-      parsedModule.linkedParsedNodes.forEach((linkedParsedNode) => {
-        if (!linkedParsedNode.code) return;
+    if (relatedDeclarationsAsPrivate) {
+      const exportIdentifiers: string[] = [];
 
-        if (parsedModule.exportedParsedNodes.has(linkedParsedNode)) return;
+      parsedModule.exportedParsedNodes.forEach((parsedNode) => {
+        if (!parsedNode.code) return;
 
-        linkedParsedNode.code = linkedParsedNode.code.replace(/export(\s?)/, '');
+        exportIdentifiers.push(parsedNode.name);
+      });
 
-        moduleSource += printParsedNode(linkedParsedNode);
+      moduleSource += `export { ${exportIdentifiers.join(', ')} } from "${INTERNAL_IMPORT}";`;
+      moduleSource += ts.sys.newLine;
+    } else {
+      if (parsedModule.linkedParsedNodes.size > 0) {
+        parsedModule.linkedParsedNodes.forEach((linkedParsedNode) => {
+          if (!linkedParsedNode.code) return;
+
+          if (parsedModule.exportedParsedNodes.has(linkedParsedNode)) return;
+
+          moduleSource += printParsedNode(linkedParsedNode);
+          moduleSource += ts.sys.newLine;
+        });
+      }
+
+      parsedModule.exportedParsedNodes.forEach((parsedNode) => {
+        if (!parsedNode.code) return;
+
+        moduleSource += printParsedNode(parsedNode);
         moduleSource += ts.sys.newLine;
       });
     }
-
-    parsedModule.exportedParsedNodes.forEach((parsedNode) => {
-      if (!parsedNode.code) return;
-
-      moduleSource += printParsedNode(parsedNode);
-      moduleSource += ts.sys.newLine;
-    });
   }
 
   if (reExportsIdentifiers.length > 0) {
@@ -317,7 +294,7 @@ export const printClassDeclarationDefinition = ({
   srcText += '{';
   srcText += ts.sys.newLine;
 
-  if (constructorParameters) {
+  if (constructorParameters.length > 0) {
     srcText += `constructor(${constructorParameters.join(', ')})`;
     srcText += ts.sys.newLine;
   }

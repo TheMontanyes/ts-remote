@@ -10,7 +10,7 @@ import {
   ReExportModule,
   VariableDeclarationDefinition,
 } from './types';
-import { createSearchLinkedNodes } from './search-linked-nodes';
+import { createSearchLinkedNodes, isCanBeAliasSymbol } from './search-linked-nodes';
 import { createRegexpIdentifier, getJsDOC, isFromStdLib, isNodeFromPackage } from '../lib';
 import {
   printClassDeclarationDefinition,
@@ -1016,20 +1016,55 @@ export const createParser = (program: ts.Program) => {
 
         // export default
         if (ts.isExportAssignment(node)) {
-          // TODO refactor
           const typeString = typeChecker.typeToString(
             typeChecker.getTypeAtLocation(node.expression),
             node.expression,
             ts.TypeFormatFlags.NoTruncation,
           );
 
-          acc.exportDefaultParsedNode = {
+          const parsedNode: ParsedNode = {
             astNode: node.expression,
             jsDoc: '',
-            code: `const _default: ${typeString};${ts.sys.newLine}export default _default;`,
+            code: `export default ${typeString};`,
             name: '',
             linkedNodes: [],
           };
+
+          if (ts.isIdentifier(node.expression)) {
+            parsedNode.name = node.expression.text;
+
+            const symbol = typeChecker.getSymbolAtLocation(node.expression);
+
+            if (symbol) {
+              const realSymbol = isCanBeAliasSymbol(symbol)
+                ? typeChecker.getAliasedSymbol(symbol)
+                : symbol;
+
+              if (realSymbol.declarations?.length) {
+                const declaration = realSymbol.declarations[0];
+
+                if (declaration) {
+                  parsedNode.linkedNodes.push(declaration);
+
+                  const linkedParsedNode = parseNode(declaration) as LinkedParsedNode;
+
+                  if (parsedNode) {
+                    linkedParsedNode.parentParsedNode = parsedNode;
+
+                    const parsedLinkedNodes = parseLinkedNodes(parsedNode);
+
+                    parsedLinkedNodes?.forEach((linkedNode) => {
+                      acc.linkedParsedNodes.add(linkedNode);
+                    });
+
+                    parsedNode.code = `export default ${linkedParsedNode.name};`;
+                  }
+                }
+              }
+            }
+          }
+
+          acc.exportDefaultParsedNode = parsedNode;
         }
 
         if (isNodeFromPackage(node)) {

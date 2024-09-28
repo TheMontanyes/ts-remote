@@ -11,7 +11,7 @@ const getIdentifierFromQualifiedName = (
   return getIdentifierFromQualifiedName(node.left);
 };
 
-const isCanBeAliasSymbol = (symbol: ts.Symbol) => symbol.flags & ts.SymbolFlags.Alias;
+export const isCanBeAliasSymbol = (symbol: ts.Symbol) => symbol.flags & ts.SymbolFlags.Alias;
 
 const addToCollection = (node: ts.Node, collection: Set<ts.Node>): void => {
   if (!isFromStdLib(node) && !ts.isToken(node)) {
