@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.2] - 2026-06-28
+
+### 🔧 Internal
+
+- **TypeScript 6.0**: Upgraded the dev toolchain to `typescript@6.0.3` and `@types/node@26`. Migrated for the 6.0 breaking changes:
+  - Added `"types": ["node"]` to `tsconfig.json` — TS 6.0 no longer auto-discovers `@types/node` through pnpm's symlinked layout.
+  - Added an explicit `"rootDir"` to satisfy TS 6.0's stricter `declaration` emit (`TS5011`).
+  - Set `ignoreDeprecations: "6.0"` for the CommonJS build, which still relies on the now-deprecated `node10` module resolution (removed in TS 7.0).
+
+  The `typescript` peer dependency range (`>=4.9`) is unchanged — consumers on 4.9–6.x remain supported.
+
 ## [2.1.1] - 2026-06-28
 
 ### 🐛 Fixed

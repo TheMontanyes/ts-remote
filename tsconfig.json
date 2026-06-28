@@ -1,9 +1,13 @@
 {
   "compilerOptions": {
     "outDir": "dist",
+    "rootDir": ".",
     "target": "ESNext",
     "lib": [
       "ESNext"
+    ],
+    "types": [
+      "node"
     ],
     "module": "NodeNext",
     "moduleResolution": "NodeNext",

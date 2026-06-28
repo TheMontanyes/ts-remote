@@ -45,6 +45,9 @@ const program = ts.createProgram(entryFiles, {
   outDir: OUTPUT_PATH,
   target: ScriptTarget.ESNext,
   moduleResolution: ModuleResolutionKind.Node10,
+  // TS 6.0 deprecates the legacy `node10` resolver (removed in 7.0). The CJS
+  // output still relies on it, so silence the deprecation until we migrate.
+  ignoreDeprecations: '6.0',
 });
 
 const emitResult = program.emit();
