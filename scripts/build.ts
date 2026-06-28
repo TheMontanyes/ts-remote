@@ -42,7 +42,16 @@ const entryFiles = [
 const program = ts.createProgram(entryFiles, {
   ...getCompilerOptions(path.resolve(cwd, 'tsconfig.json')),
   module: ModuleKind.CommonJS,
+  // Emit `.d.ts` alongside `.js`. Kept here (not in the shared tsconfig) so the
+  // root config stays emit-free for typecheck / ts-node, which under TS 6.0
+  // errors (TS5011) when `declaration` is on without an explicit rootDir.
+  declaration: true,
   outDir: OUTPUT_PATH,
+  // Emit packages/<pkg>/... as dist/<pkg>/... so the published `exports`
+  // (./builder, ./fetcher, ./plugin) and the bin wrapper (../cli/index.js)
+  // resolve. Without an explicit rootDir TS infers the common source dir, which
+  // shifts once non-packages files (scripts/, examples/) enter the program.
+  rootDir: path.resolve(cwd, 'packages'),
   target: ScriptTarget.ESNext,
   moduleResolution: ModuleResolutionKind.Node10,
   // TS 6.0 deprecates the legacy `node10` resolver (removed in 7.0). The CJS
