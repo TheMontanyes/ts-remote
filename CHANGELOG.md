@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.1] - 2026-06-28
+
+### 🐛 Fixed
+
+- **Builder**: A class (or other named declaration) exported via a standalone `export { X }` statement — e.g. `class HttpClient {} ... export { HttpClient }` — was misdetected as an internal name collision, renamed to `X_1`, and then dropped from the generated `.d.ts` as unused. The symbol survived only as a type reference (in factory return types, instances, and the export list) without its class declaration. The collision resolver now recognises declarations exported through a local `export { X }` and exempts them from renaming.
+
+### 🧪 Tests
+
+- Added builder regression tests covering inline `export class`, the standalone `export { X }` pattern, classes consumed only as types elsewhere, and that genuine name collisions are still resolved.
+
+### 📚 Examples
+
+- Added `examples/http-client` — an `HttpClient` abstraction (adapter, interceptors, typed models) built on the platform `fetch` with no external dependencies, doubling as a reproduction case for the fix above.
+
 ## [2.0.0] - 2026-02-26
 
 ### 🚀 Major Rewrite

@@ -235,6 +235,36 @@ export class Emitter {
     ts.forEachChild(sourceFile, visit);
   }
 
+  /**
+   * Collect names exported from a file via a standalone `export { ... }`
+   * declaration that has no module specifier (i.e. re-exporting local
+   * declarations, not `export { x } from "..."`).
+   *
+   * These names belong to declarations defined in the same file using the
+   * `class X {} ... export { X }` pattern, and must be exempt from the internal
+   * name-collision renaming.
+   */
+  private collectLocalExportNames(sourceFile: ts.SourceFile): Set<string> {
+    const names = new Set<string>();
+
+    for (const statement of sourceFile.statements) {
+      if (
+        ts.isExportDeclaration(statement) &&
+        !statement.moduleSpecifier &&
+        statement.exportClause &&
+        ts.isNamedExports(statement.exportClause)
+      ) {
+        for (const element of statement.exportClause.elements) {
+          // Use the local name (propertyName when aliased: `export { Local as Public }`)
+          const localName = element.propertyName?.text ?? element.name.text;
+          names.add(localName);
+        }
+      }
+    }
+
+    return names;
+  }
+
   private transformFile(
     sourceFile: ts.SourceFile,
     context: ts.TransformationContext,
@@ -242,6 +272,12 @@ export class Emitter {
     const statementVisitor = this.getStatementVisitor(context);
 
     const isRootFile = sourceFile.fileName === this.#rootFile.fileName;
+
+    // Names exported from this file via a standalone `export { X }` declaration
+    // (no module specifier). Such declarations are the symbol's real export, so
+    // the corresponding `class X {}` / `interface X {}` must NOT be treated as an
+    // internal name collision and renamed.
+    const locallyExportedNames = this.collectLocalExportNames(sourceFile);
 
     const exportsSpecifiers: ts.ExportSpecifier[] = [];
     const seenSpecifiers = new Set<string>();
@@ -589,10 +625,12 @@ export class Emitter {
           : rootNode.name?.text;
 
         if (nodeName && this.isExportedName(nodeName)) {
-          // Check if it's exported from this file
+          // Check if it's exported from this file — either inline
+          // (`export class X`) or via a standalone `export { X }` declaration.
           const isExportedFromThisFile =
-            ts.canHaveModifiers(rootNode) &&
-            rootNode.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword);
+            (ts.canHaveModifiers(rootNode) &&
+              rootNode.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)) ||
+            locallyExportedNames.has(nodeName);
 
           if (!isExportedFromThisFile) {
             // This is an internal declaration that collides with an exported name
