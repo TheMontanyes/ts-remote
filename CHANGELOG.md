@@ -5,7 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.1.2] - 2026-06-28
+## [2.1.1] - 2026-06-28
+
+### 🐛 Fixed
+
+- **Builder**: A class (or other named declaration) exported via a standalone `export { X }` statement — e.g. `class HttpClient {} ... export { HttpClient }` — was misdetected as an internal name collision, renamed to `X_1`, and then dropped from the generated `.d.ts` as unused. The symbol survived only as a type reference (in factory return types, instances, and the export list) without its class declaration. The collision resolver now recognises declarations exported through a local `export { X }` and exempts them from renaming.
 
 ### 🔧 Internal
 
@@ -17,12 +21,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The `typescript` peer dependency range (`>=4.9`) is unchanged — consumers on 4.9–6.x remain supported.
 
 - **Builder**: Explicitly disable declaration/source maps (`declarationMap`, `sourceMap`, `inlineSourceMap`, `inlineSources`) when generating bundled `.d.ts`, so a consumer's tsconfig (or TS 6.0 defaults) can't leak `.d.ts.map` files or `sourceMappingURL` comments into the single ambient module output.
-
-## [2.1.1] - 2026-06-28
-
-### 🐛 Fixed
-
-- **Builder**: A class (or other named declaration) exported via a standalone `export { X }` statement — e.g. `class HttpClient {} ... export { HttpClient }` — was misdetected as an internal name collision, renamed to `X_1`, and then dropped from the generated `.d.ts` as unused. The symbol survived only as a type reference (in factory return types, instances, and the export list) without its class declaration. The collision resolver now recognises declarations exported through a local `export { X }` and exempts them from renaming.
 
 ### 🧪 Tests
 
