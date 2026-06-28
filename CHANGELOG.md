@@ -11,10 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **TypeScript 6.0**: Upgraded the dev toolchain to `typescript@6.0.3` and `@types/node@26`. Migrated for the 6.0 breaking changes:
   - Added `"types": ["node"]` to `tsconfig.json` — TS 6.0 no longer auto-discovers `@types/node` through pnpm's symlinked layout.
-  - Added an explicit `"rootDir"` to satisfy TS 6.0's stricter `declaration` emit (`TS5011`).
+  - Made the root `tsconfig.json` emit-free (moved `outDir`/`declaration` out of it) and kept an explicit `"rootDir"`, since TS 6.0 errors with `TS5011` when `declaration` is on without one. The publish build (`scripts/build.ts`) now sets `outDir`, `declaration`, and `rootDir: packages` itself, so `dist/` keeps the flat `builder/ fetcher/ plugin/ cli/` layout that `package.json#exports` and the bin wrapper depend on.
   - Set `ignoreDeprecations: "6.0"` for the CommonJS build, which still relies on the now-deprecated `node10` module resolution (removed in TS 7.0).
 
   The `typescript` peer dependency range (`>=4.9`) is unchanged — consumers on 4.9–6.x remain supported.
+
+- **Builder**: Explicitly disable declaration/source maps (`declarationMap`, `sourceMap`, `inlineSourceMap`, `inlineSources`) when generating bundled `.d.ts`, so a consumer's tsconfig (or TS 6.0 defaults) can't leak `.d.ts.map` files or `sourceMappingURL` comments into the single ambient module output.
 
 ## [2.1.1] - 2026-06-28
 

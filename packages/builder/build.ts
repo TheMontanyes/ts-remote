@@ -19,9 +19,6 @@ const baseOutputFormat = (result: string) => result;
 const baseTsConfigPath = path.resolve(cwd, 'tsconfig.json');
 
 export default async function main(options: BuilderOptions) {
-  console.time('DTS build');
-  console.log(new Date().toLocaleString());
-
   const { entries, output, tsconfig, additionalDeclarations = [] } = options;
   const config = tsconfig || baseTsConfigPath;
   const outputFormat = output?.format || baseOutputFormat;
@@ -35,6 +32,13 @@ export default async function main(options: BuilderOptions) {
     declaration: true,
     emitDeclarationOnly: true,
     skipLibCheck: true,
+    // We bundle the declarations into a single ambient module ourselves, so any
+    // source maps the consumer's tsconfig (or TS defaults) would emit are
+    // meaningless and would only leak `.d.ts.map` / `sourceMappingURL` noise.
+    declarationMap: false,
+    sourceMap: false,
+    inlineSourceMap: false,
+    inlineSources: false,
     moduleResolution: ts.ModuleResolutionKind.NodeNext,
     module: ts.ModuleKind.CommonJS,
   });
@@ -130,6 +134,4 @@ export default async function main(options: BuilderOptions) {
   const cleanedCode = removeDeclareInAmbientContext(finalCode);
 
   ts.sys.writeFile(outputPath, await outputFormat(cleanedCode), true);
-
-  console.timeEnd('DTS build');
 }
