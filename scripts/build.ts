@@ -19,6 +19,7 @@ const PUBLISH_FIELDS = [
   'license',
   'bugs',
   'homepage',
+  'engines',
   'peerDependencies',
 ] as const;
 

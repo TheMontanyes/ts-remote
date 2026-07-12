@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-07-12
+
+### ✨ Added
+
+- **Fetcher**: Support for TLS options (`ca`, `cert`, `key`, `pfx`, `passphrase`, `rejectUnauthorized`) on `httpGet`/`fetchRemotes`, for remotes that require a client certificate (mutual TLS) or a self-signed/internal CA. Configurable programmatically via `FetcherOptions.tls` (certificate contents as `string | Buffer`) or in `tsconfig.json` via the plugin's `tls` block (`ca`/`cert`/`key`/`pfx` given as file paths, resolved relative to the tsconfig and read into buffers by `readPluginConfig`). The `TlsOptions` type is exported from `ts-remote/fetcher`.
+- **Plugin**: The Language Service Plugin's background refresh honors the same `tls` block (paths resolved relative to the project root); a broken `tls` config is logged and skipped rather than taking down the TS server.
+- **Fetcher**: Custom request headers via `FetcherOptions.headers` or the plugin's `headers` block in `tsconfig.json`, for remotes behind token auth (private CDNs, artifact registries). Header values in `tsconfig.json` may reference environment variables as `${VAR_NAME}` so secrets aren't committed; `Authorization`/`Cookie`/`Proxy-Authorization` are dropped when a redirect leaves the original origin.
+- **Fetcher**: Stale-if-error fallback — when a fetch fails and an expired cached copy exists on disk, the stale copy is used with a warning instead of failing the run. On by default (`staleIfError: true`); `ts-remote fetch --force` disables it (fresh types or a hard failure).
+- **Fetcher**: ETag revalidation — the `ETag` stored in the cache manifest (previously unused) is now sent as `If-None-Match` when re-fetching an expired entry, and a `304 Not Modified` refreshes the cache TTL without re-downloading.
+- **Fetcher**: Remotes are fetched in parallel; `maxRedirects` is exposed on `FetcherOptions`; `303 See Other` redirects are followed; responses that are empty or look like an HTML error page are rejected instead of being cached as `.d.ts`.
+- **Plugin**: The background refresh now shares the fetcher's full pipeline (`fetchOne`) — retries with backoff, ETag revalidation and stale-if-error included — with per-remote error isolation, instead of a single bare HTTP attempt per remote.
+- **Packaging**: Declared `"engines": { "node": ">=18" }` in `package.json` (and included it in the published package), backing the Node requirement already stated in the README.
+
 ## [2.1.1] - 2026-06-28
 
 ### 🐛 Fixed

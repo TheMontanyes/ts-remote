@@ -54,6 +54,9 @@
     "url": "https://github.com/arkhipovdenis/ts-remote.git/issues"
   },
   "homepage": "https://github.com/arkhipovdenis/ts-remote.git#readme",
+  "engines": {
+    "node": ">=18"
+  },
   "peerDependencies": {
     "typescript": ">=4.9"
   },
