@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import ts from 'typescript';
 import build from '../build';
 
 let tmpDir: string;
@@ -15,6 +16,37 @@ function writeFiles(files: Record<string, string>): string {
     fs.writeFileSync(filePath, content);
   }
   return srcDir;
+}
+
+/**
+ * Type-check a consumer `.ts` snippet against a generated `.d.ts`, to prove the
+ * declaration behaves as intended (e.g. a global augmentation actually applies)
+ * rather than merely matching the expected text. Returns the semantic errors.
+ */
+function typeCheckConsumer(generatedDts: string, consumerTs: string): string[] {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ts-remote-consumer-'));
+  const dtsPath = path.join(dir, 'my-app.d.ts');
+  const consumerPath = path.join(dir, 'consumer.ts');
+  fs.writeFileSync(dtsPath, generatedDts);
+  fs.writeFileSync(consumerPath, consumerTs);
+
+  try {
+    const program = ts.createProgram([dtsPath, consumerPath], {
+      target: ts.ScriptTarget.ES2020,
+      lib: ['lib.es2020.d.ts', 'lib.dom.d.ts'],
+      moduleResolution: ts.ModuleResolutionKind.Node10,
+      strict: true,
+      noEmit: true,
+      types: [],
+    });
+
+    return ts
+      .getPreEmitDiagnostics(program)
+      .filter((d) => d.file?.fileName === consumerPath)
+      .map((d) => ts.flattenDiagnosticMessageText(d.messageText, '\n'));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 async function buildModule(srcDir: string, moduleName = 'test'): Promise<string> {
@@ -251,6 +283,86 @@ describe('builder: declaration emit', () => {
           { message: /Source file not found/ },
         );
       }
+    });
+  });
+
+  describe('inline `declare global` in an entry module', () => {
+    // Unlike an external .d.ts (see additionalDeclarations), a `declare global`
+    // block written directly inside an entry module goes through the emitter and
+    // is preserved as a `global {}` augmentation inside the module block — which
+    // is valid ambient syntax and applies globally on the consumer side. These
+    // tests pin that behavior so a future emitter change can't silently drop it.
+
+    // A self-contained global (`declare global { var ... }`) rather than a DOM
+    // `Window` augmentation, so the fixture doesn't depend on `lib.dom` being in
+    // the build's tsconfig (it isn't).
+    const globalEntry =
+      'interface Bar { baz: string; }\n' +
+      'declare global {\n  var appBar: Bar;\n}\n' +
+      'export const getBar = () => appBar;\n';
+
+    async function buildGlobalEntry(): Promise<string> {
+      const srcDir = writeFiles({ 'index.ts': globalEntry });
+      const outputPath = path.join(tmpDir, 'dist', 'types.d.ts');
+
+      await build({
+        entries: [{ name: 'my-app', filename: path.join(srcDir, 'index.ts') }],
+        output: { filename: outputPath },
+        tsconfig: path.resolve(process.cwd(), 'tsconfig.json'),
+      });
+
+      return fs.readFileSync(outputPath, 'utf-8');
+    }
+
+    it('preserves `declare global` as a `global {}` block inside the module', async () => {
+      const dts = await buildGlobalEntry();
+
+      assert.match(dts, /declare module "my-app"/, 'module block should be present');
+      assert.match(
+        dts,
+        /\bglobal\s*\{/,
+        'the augmentation should be emitted as a `global {}` block',
+      );
+      assert.match(dts, /var appBar: Bar/, 'the global declaration must be shipped');
+      assert.match(dts, /getBar: \(\) => Bar/, 'emitted types should resolve the local Bar');
+
+      // The `global` block must sit INSIDE the module block, not at top level:
+      // a top-level `global {}` is only legal inside an ambient module.
+      assert.ok(
+        dts.indexOf('declare module "my-app"') < dts.indexOf('global {'),
+        'the `global {}` block should be nested inside the module block',
+      );
+    });
+
+    it('produces a .d.ts where the global augmentation applies on the consumer side', async () => {
+      const dts = await buildGlobalEntry();
+
+      const okErrors = typeCheckConsumer(
+        dts,
+        `/// <reference path="./my-app.d.ts" />\nconst f: { baz: string } = appBar;\nexport { f };\n`,
+      );
+      assert.deepEqual(okErrors, [], 'appBar should type-check via the global augmentation');
+
+      // Negative control: the global is typed precisely, not a blanket `any`.
+      const badErrors = typeCheckConsumer(
+        dts,
+        `/// <reference path="./my-app.d.ts" />\nconst n: number = appBar.baz;\nexport { n };\n`,
+      );
+      assert.ok(
+        badErrors.some((e) => /not assignable/.test(e)),
+        'appBar.baz (a string) should not be assignable to number',
+      );
+    });
+
+    it('does not emit a bare top-level `global {}` block', async () => {
+      const dts = await buildGlobalEntry();
+
+      // No `global {` may appear before the opening module block — i.e. none
+      // escapes to the top level, where it would be invalid ambient syntax.
+      assert.ok(
+        dts.indexOf('global {') > dts.indexOf('declare module "my-app"'),
+        'no `global {}` should escape to the top level',
+      );
     });
   });
 });

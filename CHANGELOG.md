@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Builder**: `additionalDeclarations` entries can be `{ filename, emit: false }` for environment-only declarations — visible to the compiler while generating types, but not shipped in the output. The `AdditionalDeclaration` type is exported from `ts-remote/builder`.
 - **Builder**: `additionalDeclarations` validation — non-`.d.ts` paths are rejected; a missing file fails loudly up front (even in `emit: false` mode, where the compiler would otherwise silently type against an environment that isn't there); a module-form file (top-level `import`/`export`, e.g. `export {}` with `declare global`) is rejected for concatenation with a hint to use script form or `emit: false`, since it would silently turn the whole output into a module and strip its globals.
 
+### 🧪 Tests
+
+- **Builder**: Regression coverage for a `declare global { ... }` block written directly inside an entry module (as opposed to an external `additionalDeclarations` file). This already works — the emitter preserves it as a nested `global {}` augmentation — but the tests pin the behavior, including a real consumer-side type-check proving the augmentation applies and is typed precisely rather than degrading to `any`.
+
 ## [2.1.1] - 2026-06-28
 
 ### 🐛 Fixed

@@ -187,6 +187,28 @@ declare module 'my-app' {
 
 Without `additionalDeclarations` the compiler wouldn't see `global.d.ts` at all (the program is built from the entry files only) and `getBar` would degrade to `() => any`. Use `{ filename, emit: false }` for declarations that are needed to compile but shouldn't be shipped — e.g. environment types the consumer is guaranteed to have already.
 
+A `declare global { ... }` block written **directly inside an entry module** is handled automatically — no `additionalDeclarations` needed. It goes through the emitter and is preserved as a `global {}` augmentation inside the module block, which stays a valid global augmentation on the consumer side:
+
+```typescript
+// getBar.ts
+interface Bar { baz: string; }
+declare global {
+  interface Window { foo: Bar; }
+}
+export const getBar = () => window.foo;
+```
+
+```typescript
+declare module 'my-app' {
+  interface Bar { baz: string; }
+  global {
+    interface Window { foo: Bar; }
+  }
+  const getBar: () => Bar;
+  export { getBar };
+}
+```
+
 ---
 
 ## Consumer: fetching types
