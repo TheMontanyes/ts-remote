@@ -29,10 +29,16 @@ export async function fetchCommand(flags: Record<string, string | boolean>): Pro
     remotes: pluginConfig.remotes,
     cacheDir: cacheDir ?? pluginConfig.cacheDir,
     cacheTTL: force ? 0 : pluginConfig.cacheTTL,
+    tls: pluginConfig.tls,
+    headers: pluginConfig.headers,
+    // --force means "give me fresh types or fail" — no stale fallback
+    staleIfError: !force,
   });
 
   for (const result of results) {
-    if (result.fromCache) {
+    if (result.stale) {
+      logger.warn(`${result.name}: server unreachable, using stale cache (${result.cachedPath})`);
+    } else if (result.fromCache) {
       logger.info(`${result.name}: cached (${result.cachedPath})`);
     } else {
       logger.info(`${result.name}: fetched from ${result.url}`);

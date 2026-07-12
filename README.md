@@ -168,12 +168,32 @@ Point the consumer at the published `.d.ts` files. Configure remotes once in the
           "@shared/ui": "https://cdn.example.com/shared-ui/types.d.ts"
         },
         "cacheDir": "node_modules/.ts-remote",
-        "cacheTTL": 300000
+        "cacheTTL": 300000,
+        "tls": {
+          "ca": "./certs/internal-ca.pem",
+          "cert": "./certs/client-cert.pem",
+          "key": "./certs/client-key.pem"
+        },
+        "headers": {
+          "Authorization": "Bearer ${TYPES_REGISTRY_TOKEN}"
+        }
       }
     ]
   }
 }
 ```
+
+`tls` is optional and only needed if a remote requires a client certificate (mutual TLS) or a self-signed/internal CA that Node doesn't trust by default:
+
+| Property | Type | Description |
+|----------|------|--------------|
+| `tls.ca` | `string` | Path to a trusted CA certificate, relative to this tsconfig |
+| `tls.cert` / `tls.key` | `string` | Path to a client certificate/key for mutual TLS |
+| `tls.pfx` | `string` | Path to a PKCS#12 bundle, as an alternative to `cert`/`key` |
+| `tls.passphrase` | `string` | Passphrase for `key` or `pfx` |
+| `tls.rejectUnauthorized` | `boolean` | Verify the server's certificate (`true` by default) |
+
+`headers` is optional and adds request headers, e.g. a token for a private host. Values may reference environment variables as `${VAR_NAME}` — resolved at fetch time, so secrets stay out of the committed tsconfig (an unset variable is an error). `Authorization`, `Cookie` and `Proxy-Authorization` are automatically dropped if a redirect leaves the original origin.
 
 ### CLI
 
@@ -187,8 +207,10 @@ ts-remote fetch
 |------|---------|-------------|
 | `--config <path>` | `./tsconfig.json` | Path to the tsconfig holding the `ts-remote` plugin config |
 | `--cache-dir <path>` | `node_modules/.ts-remote/` | Where cached `.d.ts` files are written |
-| `--force` | `false` | Re-fetch all remotes, ignoring the cache TTL |
+| `--force` | `false` | Re-fetch all remotes, ignoring the cache TTL. Also disables the stale-cache fallback: fresh types or a hard failure |
 | `--help` | — | Show usage |
+
+If a remote is temporarily unreachable and an expired copy exists in the cache, `fetch` (without `--force`) logs a warning and keeps the stale copy instead of failing — so a flaky CDN doesn't break `postinstall` or CI.
 
 Run it in a `postinstall` script or in CI before `tsc` so the cache is warm:
 
@@ -226,9 +248,33 @@ console.log(results[0].fromCache);  // false on first run, true while within TTL
 | `cacheTTL` | `number` | `300000` (5 min) | Cache lifetime in ms. `0` = always re-fetch, `Infinity` = never |
 | `retries` | `number` | `2` | Retry attempts on network failure (4xx is not retried) |
 | `timeout` | `number` | `10000` | Per-request timeout in ms |
+| `maxRedirects` | `number` | `5` | Maximum redirects to follow per request |
 | `logLevel` | `LogLevel` | `Info` | Verbosity |
+| `tls` | `TlsOptions` | — | Client cert, custom CA, etc — forwarded to Node's `https` client |
+| `headers` | `Record<string, string>` | — | Extra request headers (e.g. `Authorization`); credentials are dropped on cross-origin redirects |
+| `staleIfError` | `boolean` | `true` | On fetch failure, fall back to an expired cached copy (with a warning) instead of throwing |
 
-Each `FetchResult` is `{ name, url, cachedPath, fromCache }`.
+Each `FetchResult` is `{ name, url, cachedPath, fromCache, stale? }` — `stale: true` marks a result served from expired cache because the fetch failed.
+
+Remotes are fetched in parallel. When an expired cache entry has an `ETag` from the server, the re-fetch is conditional (`If-None-Match`): a `304 Not Modified` revalidates the cached copy without re-downloading. Responses that are empty or look like an HTML error page are rejected rather than cached.
+
+Calling the fetcher directly (rather than through the `tsconfig.json` plugin config) is the same escape hatch used above, except `tls.ca`/`cert`/`key`/`pfx` take the certificate content itself (`string | Buffer`), not a file path — read the file yourself:
+
+```typescript
+import fs from 'node:fs';
+import fetch from 'ts-remote/fetcher';
+
+const results = await fetch({
+  remotes: {
+    'my-app': 'https://internal.example.com/my-app/types.d.ts',
+  },
+  tls: {
+    ca: fs.readFileSync('./certs/internal-ca.pem'),
+    cert: fs.readFileSync('./certs/client-cert.pem'),
+    key: fs.readFileSync('./certs/client-key.pem'),
+  },
+});
+```
 
 ### Editor & build-time resolution (plugin)
 
@@ -238,7 +284,7 @@ The `ts-remote` plugin is a [TypeScript Language Service Plugin](https://github.
 import { User, getUser } from 'my-app'; // ✅ typed from the remote .d.ts
 ```
 
-> **Editor note:** Language Service Plugins run inside the TypeScript server your editor ships with. In VS Code, select **"Use Workspace Version"** of TypeScript so the plugin is loaded. The plugin reads from the cache populated by `ts-remote fetch`, so fetch first.
+> **Editor note:** Language Service Plugins run inside the TypeScript server your editor ships with. In VS Code, select **"Use Workspace Version"** of TypeScript so the plugin is loaded. On startup the plugin loads types from the cache populated by `ts-remote fetch` — so fetch first — and then refreshes stale or missing remotes in the background, honoring the same `remotes`, `cacheDir`, `cacheTTL`, `tls` and `headers` settings.
 
 ---
 

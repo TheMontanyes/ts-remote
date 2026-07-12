@@ -101,4 +101,181 @@ describe('readPluginConfig', () => {
   it('throws when tsconfig does not exist', () => {
     assert.throws(() => readPluginConfig('/nonexistent/tsconfig.json'), /Failed to read/);
   });
+
+  describe('tls', () => {
+    it('reads cert/key/ca file paths relative to the tsconfig directory', () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ts-remote-test-'));
+      fs.writeFileSync(path.join(dir, 'ca.pem'), 'ca-content');
+      fs.writeFileSync(path.join(dir, 'client-cert.pem'), 'cert-content');
+      fs.writeFileSync(path.join(dir, 'client-key.pem'), 'key-content');
+
+      const filePath = path.join(dir, 'tsconfig.json');
+      fs.writeFileSync(
+        filePath,
+        JSON.stringify({
+          compilerOptions: {
+            plugins: [
+              {
+                name: 'ts-remote',
+                remotes: { app: 'https://cdn.example.com/types.d.ts' },
+                tls: {
+                  ca: './ca.pem',
+                  cert: './client-cert.pem',
+                  key: './client-key.pem',
+                  passphrase: 'secret',
+                  rejectUnauthorized: false,
+                },
+              },
+            ],
+          },
+        }),
+      );
+
+      const config = readPluginConfig(filePath);
+      assert.ok(config.tls);
+      assert.equal(config.tls?.ca?.toString(), 'ca-content');
+      assert.equal(config.tls?.cert?.toString(), 'cert-content');
+      assert.equal(config.tls?.key?.toString(), 'key-content');
+      assert.equal(config.tls?.passphrase, 'secret');
+      assert.equal(config.tls?.rejectUnauthorized, false);
+    });
+
+    it('throws when a tls file does not exist', () => {
+      const filePath = createTempTsconfig({
+        compilerOptions: {
+          plugins: [
+            {
+              name: 'ts-remote',
+              remotes: { app: 'https://cdn.example.com/types.d.ts' },
+              tls: { ca: './missing-ca.pem' },
+            },
+          ],
+        },
+      });
+
+      assert.throws(() => readPluginConfig(filePath), /Failed to read "tls\.ca"/);
+    });
+
+    it('throws when tls.passphrase is not a string', () => {
+      const filePath = createTempTsconfig({
+        compilerOptions: {
+          plugins: [
+            {
+              name: 'ts-remote',
+              remotes: { app: 'https://cdn.example.com/types.d.ts' },
+              tls: { passphrase: 123 },
+            },
+          ],
+        },
+      });
+
+      assert.throws(() => readPluginConfig(filePath), /Invalid "tls\.passphrase"/);
+    });
+
+    it('omits tls when not configured', () => {
+      const filePath = createTempTsconfig({
+        compilerOptions: {
+          plugins: [
+            {
+              name: 'ts-remote',
+              remotes: { app: 'https://cdn.example.com/types.d.ts' },
+            },
+          ],
+        },
+      });
+
+      const config = readPluginConfig(filePath);
+      assert.equal(config.tls, undefined);
+    });
+  });
+
+  describe('headers', () => {
+    it('reads plain header values', () => {
+      const filePath = createTempTsconfig({
+        compilerOptions: {
+          plugins: [
+            {
+              name: 'ts-remote',
+              remotes: { app: 'https://cdn.example.com/types.d.ts' },
+              headers: { 'X-Team': 'checkout' },
+            },
+          ],
+        },
+      });
+
+      const config = readPluginConfig(filePath);
+      assert.deepStrictEqual(config.headers, { 'X-Team': 'checkout' });
+    });
+
+    it('substitutes ${VAR} references from the environment', () => {
+      process.env['TS_REMOTE_TEST_TOKEN'] = 'secret-token';
+
+      try {
+        const filePath = createTempTsconfig({
+          compilerOptions: {
+            plugins: [
+              {
+                name: 'ts-remote',
+                remotes: { app: 'https://cdn.example.com/types.d.ts' },
+                headers: { Authorization: 'Bearer ${TS_REMOTE_TEST_TOKEN}' },
+              },
+            ],
+          },
+        });
+
+        const config = readPluginConfig(filePath);
+        assert.deepStrictEqual(config.headers, { Authorization: 'Bearer secret-token' });
+      } finally {
+        delete process.env['TS_REMOTE_TEST_TOKEN'];
+      }
+    });
+
+    it('throws when a referenced environment variable is not set', () => {
+      const filePath = createTempTsconfig({
+        compilerOptions: {
+          plugins: [
+            {
+              name: 'ts-remote',
+              remotes: { app: 'https://cdn.example.com/types.d.ts' },
+              headers: { Authorization: 'Bearer ${TS_REMOTE_UNSET_VAR}' },
+            },
+          ],
+        },
+      });
+
+      assert.throws(() => readPluginConfig(filePath), /TS_REMOTE_UNSET_VAR.*not set/);
+    });
+
+    it('throws when a header value is not a string', () => {
+      const filePath = createTempTsconfig({
+        compilerOptions: {
+          plugins: [
+            {
+              name: 'ts-remote',
+              remotes: { app: 'https://cdn.example.com/types.d.ts' },
+              headers: { 'X-Retry': 3 },
+            },
+          ],
+        },
+      });
+
+      assert.throws(() => readPluginConfig(filePath), /Invalid "headers\.X-Retry"/);
+    });
+
+    it('omits headers when not configured', () => {
+      const filePath = createTempTsconfig({
+        compilerOptions: {
+          plugins: [
+            {
+              name: 'ts-remote',
+              remotes: { app: 'https://cdn.example.com/types.d.ts' },
+            },
+          ],
+        },
+      });
+
+      const config = readPluginConfig(filePath);
+      assert.equal(config.headers, undefined);
+    });
+  });
 });

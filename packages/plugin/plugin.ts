@@ -2,14 +2,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import ts from 'typescript';
 import { CacheManager } from '../fetcher/cache';
-import { httpGet } from '../fetcher/http';
-import { validateRemotes } from '../fetcher/config';
+import { fetchOne } from '../fetcher/fetch';
+import { readHeadersConfig, readTlsConfig, validateRemotes } from '../fetcher/config';
 import { Logger, LogLevel } from '../shared/logger';
 import { RemoteMap, TsRemotePluginConfig } from '../fetcher/contract-public';
 
 const DEFAULT_CACHE_DIR = 'node_modules/.ts-remote';
 const DEFAULT_CACHE_TTL = 300_000; // 5 minutes
 const DEFAULT_TIMEOUT = 10_000;
+const DEFAULT_RETRIES = 2;
 
 /**
  * TypeScript Language Service Plugin for resolving remote `.d.ts` declarations.
@@ -35,17 +36,20 @@ export class TsRemotePlugin {
     this.#logger = new Logger(LogLevel.Info);
 
     // Extract config from the plugin entry in tsconfig.json
-    const rawConfig = info.config as Partial<TsRemotePluginConfig>;
+    const rawConfig = info.config as Partial<TsRemotePluginConfig> & {
+      tls?: Record<string, unknown>;
+      headers?: Record<string, unknown>;
+    };
+    const projectDir = info.project.getCurrentDirectory();
 
     this.#config = {
       name: 'ts-remote',
       remotes: (rawConfig.remotes as RemoteMap) ?? {},
       cacheDir: rawConfig.cacheDir,
       cacheTTL: rawConfig.cacheTTL,
+      tls: this.resolveTls(rawConfig.tls, projectDir),
+      headers: this.resolveHeaders(rawConfig.headers),
     };
-
-    // Resolve cache directory relative to the project root
-    const projectDir = info.project.getCurrentDirectory();
     const cacheDir = this.#config.cacheDir
       ? path.resolve(projectDir, this.#config.cacheDir)
       : path.resolve(projectDir, DEFAULT_CACHE_DIR);
@@ -71,6 +75,48 @@ export class TsRemotePlugin {
    */
   static getExternalFilesForProject(project: ts.server.Project): string[] {
     return TsRemotePlugin.#projectFiles.get(project) ?? [];
+  }
+
+  /**
+   * Resolve the `tls` block from the tsconfig plugin entry (cert file paths,
+   * relative to the project root) into buffers for the HTTP client.
+   * A broken tls config must not take down the TS server, so errors are
+   * logged and background fetching proceeds without TLS options.
+   */
+  private resolveTls(
+    raw: Record<string, unknown> | undefined,
+    projectDir: string,
+  ): TsRemotePluginConfig['tls'] {
+    if (!raw || typeof raw !== 'object') {
+      return undefined;
+    }
+
+    try {
+      return readTlsConfig(raw, projectDir);
+    } catch (err) {
+      this.#logger.error('Invalid tls configuration', err instanceof Error ? err : undefined);
+      return undefined;
+    }
+  }
+
+  /**
+   * Resolve the `headers` block from the tsconfig plugin entry (including
+   * `${ENV_VAR}` substitution). Like `tls`, a broken headers config is logged
+   * and skipped rather than crashing the TS server.
+   */
+  private resolveHeaders(
+    raw: Record<string, unknown> | undefined,
+  ): TsRemotePluginConfig['headers'] {
+    if (!raw || typeof raw !== 'object') {
+      return undefined;
+    }
+
+    try {
+      return readHeadersConfig(raw);
+    } catch (err) {
+      this.#logger.error('Invalid headers configuration', err instanceof Error ? err : undefined);
+      return undefined;
+    }
   }
 
   /**
@@ -180,29 +226,37 @@ export class TsRemotePlugin {
     const ttl = this.#config.cacheTTL ?? DEFAULT_CACHE_TTL;
     const remotes = this.#config.remotes;
 
-    // Fire-and-forget — errors are logged, not thrown
+    // Fire-and-forget — errors are logged per remote, not thrown
     (async () => {
       let updated = false;
 
-      for (const [name, url] of Object.entries(remotes)) {
-        // Skip if cache is fresh
-        const cached = this.#cacheManager.get(name, ttl);
-        if (cached) continue;
+      await Promise.all(
+        Object.entries(remotes).map(async ([name, url]) => {
+          try {
+            const result = await fetchOne(name, url, {
+              cache: this.#cacheManager,
+              logger: this.#logger,
+              cacheTTL: ttl,
+              retries: DEFAULT_RETRIES,
+              timeout: DEFAULT_TIMEOUT,
+              tls: this.#config.tls,
+              headers: this.#config.headers,
+              staleIfError: true,
+            });
 
-        try {
-          const result = await httpGet(url, { timeout: DEFAULT_TIMEOUT });
-          const entry = this.#cacheManager.set(name, result.body);
+            this.#cachedFilesByModule.set(name, result.cachedPath);
 
-          this.#cachedFilesByModule.set(name, entry.filePath);
-          this.#logger.info(`${name}: fetched from ${url}`);
-          updated = true;
-        } catch (err) {
-          this.#logger.error(
-            `Failed to fetch remote types for "${name}" from ${url}`,
-            err instanceof Error ? err : undefined,
-          );
-        }
-      }
+            if (!result.fromCache) {
+              updated = true;
+            }
+          } catch (err) {
+            this.#logger.error(
+              `Failed to fetch remote types for "${name}" from ${url}`,
+              err instanceof Error ? err : undefined,
+            );
+          }
+        }),
+      );
 
       if (updated) {
         this.updateExternalFiles();

@@ -41,6 +41,26 @@ export class CacheManager {
    * Returns `null` if the entry doesn't exist, the file is missing, or TTL has expired.
    */
   get(name: string, ttl: number): CacheEntry | null {
+    const entry = this.getStale(name);
+
+    if (!entry) {
+      return null;
+    }
+
+    // Check TTL (0 means always re-fetch)
+    if (ttl === 0 || Date.now() - entry.fetchedAt > ttl) {
+      this.#logger.debug(`Cache expired for "${name}"`);
+      return null;
+    }
+
+    return entry;
+  }
+
+  /**
+   * Get a cached entry regardless of TTL, as long as its file still exists.
+   * Used for conditional revalidation (`If-None-Match`) and stale-if-error fallback.
+   */
+  getStale(name: string): CacheEntry | null {
     const entry = this.#manifest.entries[name];
 
     if (!entry) {
@@ -55,11 +75,22 @@ export class CacheManager {
       return null;
     }
 
-    // Check TTL (0 means always re-fetch)
-    if (ttl === 0 || Date.now() - entry.fetchedAt > ttl) {
-      this.#logger.debug(`Cache expired for "${name}"`);
+    return entry;
+  }
+
+  /**
+   * Reset an entry's `fetchedAt` to now without rewriting its content,
+   * e.g. after the server confirmed it via `304 Not Modified`.
+   */
+  touch(name: string): CacheEntry | null {
+    const entry = this.#manifest.entries[name];
+
+    if (!entry) {
       return null;
     }
+
+    entry.fetchedAt = Date.now();
+    this.saveManifest();
 
     return entry;
   }

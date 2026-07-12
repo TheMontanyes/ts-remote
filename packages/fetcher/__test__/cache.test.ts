@@ -73,6 +73,55 @@ describe('CacheManager', () => {
     });
   });
 
+  describe('getStale', () => {
+    it('returns an entry even when TTL has expired', async () => {
+      const cache = new CacheManager(tmpDir, logger);
+      const entry = cache.set('my-app', 'content');
+
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      assert.equal(cache.get('my-app', 1), null);
+
+      const stale = cache.getStale('my-app');
+      assert.ok(stale);
+      assert.equal(stale!.filePath, entry.filePath);
+    });
+
+    it('returns null when the file is deleted from disk', () => {
+      const cache = new CacheManager(tmpDir, logger);
+      const entry = cache.set('my-app', 'content');
+      fs.unlinkSync(entry.filePath);
+
+      assert.equal(cache.getStale('my-app'), null);
+    });
+
+    it('returns null for nonexistent entry', () => {
+      const cache = new CacheManager(tmpDir, logger);
+      assert.equal(cache.getStale('nonexistent'), null);
+    });
+  });
+
+  describe('touch', () => {
+    it('revalidates an expired entry without rewriting content', async () => {
+      const cache = new CacheManager(tmpDir, logger);
+      cache.set('my-app', 'content');
+
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      assert.equal(cache.get('my-app', 5), null);
+
+      const touched = cache.touch('my-app');
+      assert.ok(touched);
+
+      const fresh = cache.get('my-app', 5);
+      assert.ok(fresh);
+      assert.equal(fs.readFileSync(fresh!.filePath, 'utf-8'), 'content');
+    });
+
+    it('returns null for nonexistent entry', () => {
+      const cache = new CacheManager(tmpDir, logger);
+      assert.equal(cache.touch('nonexistent'), null);
+    });
+  });
+
   describe('sanitizeFileName', () => {
     it('handles scoped package names', () => {
       const cache = new CacheManager(tmpDir, logger);

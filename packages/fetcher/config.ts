@@ -1,6 +1,9 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import process from 'node:process';
 import ts from 'typescript';
 import { ConfigError } from '../shared/errors';
-import { RemoteMap, TsRemotePluginConfig } from './contract-public';
+import { RemoteMap, TlsOptions, TsRemotePluginConfig } from './contract-public';
 
 /**
  * Read the ts-remote plugin configuration from a tsconfig.json file.
@@ -59,12 +62,102 @@ export function readPluginConfig(tsconfigPath: string): TsRemotePluginConfig {
 
   validateRemotes(remotes);
 
+  const tls =
+    pluginEntry['tls'] && typeof pluginEntry['tls'] === 'object'
+      ? readTlsConfig(pluginEntry['tls'] as Record<string, unknown>, path.dirname(tsconfigPath))
+      : undefined;
+
+  const headers =
+    pluginEntry['headers'] && typeof pluginEntry['headers'] === 'object'
+      ? readHeadersConfig(pluginEntry['headers'] as Record<string, unknown>)
+      : undefined;
+
   return {
     name: 'ts-remote',
     remotes,
     cacheDir: typeof pluginEntry['cacheDir'] === 'string' ? pluginEntry['cacheDir'] : undefined,
     cacheTTL: typeof pluginEntry['cacheTTL'] === 'number' ? pluginEntry['cacheTTL'] : undefined,
+    tls,
+    headers,
   };
+}
+
+const ENV_VAR_PATTERN = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
+
+/**
+ * Read the `headers` block of the plugin config.
+ *
+ * Values may reference environment variables as `${VAR_NAME}` so secrets
+ * (e.g. auth tokens) don't have to be committed inside tsconfig.json.
+ * Referencing an unset variable is an error.
+ */
+export function readHeadersConfig(raw: Record<string, unknown>): Record<string, string> {
+  const headers: Record<string, string> = {};
+
+  for (const [name, value] of Object.entries(raw)) {
+    if (typeof value !== 'string') {
+      throw new ConfigError(`Invalid "headers.${name}": expected a string.`);
+    }
+
+    headers[name] = value.replace(ENV_VAR_PATTERN, (_, varName: string) => {
+      const resolved = process.env[varName];
+
+      if (resolved === undefined) {
+        throw new ConfigError(
+          `Header "${name}" references environment variable "${varName}", which is not set.`,
+        );
+      }
+
+      return resolved;
+    });
+  }
+
+  return headers;
+}
+
+/**
+ * Read the `tls` block of the plugin config.
+ *
+ * `ca`, `cert`, `key` and `pfx` are given as file paths (relative to the
+ * tsconfig's directory, unless absolute) and are read into buffers here so
+ * downstream consumers can pass them straight to Node's `https` client.
+ */
+export function readTlsConfig(raw: Record<string, unknown>, baseDir: string): TlsOptions {
+  const tls: TlsOptions = {};
+
+  for (const field of ['ca', 'cert', 'key', 'pfx'] as const) {
+    const value = raw[field];
+
+    if (value === undefined) continue;
+
+    if (typeof value !== 'string') {
+      throw new ConfigError(`Invalid "tls.${field}": expected a file path string.`);
+    }
+
+    const filePath = path.isAbsolute(value) ? value : path.resolve(baseDir, value);
+
+    try {
+      tls[field] = fs.readFileSync(filePath);
+    } catch (err) {
+      throw new ConfigError(`Failed to read "tls.${field}" file: ${filePath}`, { cause: err });
+    }
+  }
+
+  if (raw['passphrase'] !== undefined) {
+    if (typeof raw['passphrase'] !== 'string') {
+      throw new ConfigError('Invalid "tls.passphrase": expected a string.');
+    }
+    tls.passphrase = raw['passphrase'];
+  }
+
+  if (raw['rejectUnauthorized'] !== undefined) {
+    if (typeof raw['rejectUnauthorized'] !== 'boolean') {
+      throw new ConfigError('Invalid "tls.rejectUnauthorized": expected a boolean.');
+    }
+    tls.rejectUnauthorized = raw['rejectUnauthorized'];
+  }
+
+  return tls;
 }
 
 /**

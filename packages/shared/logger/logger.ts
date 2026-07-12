@@ -29,6 +29,16 @@ export class Logger {
   }
 
   /**
+   * Log warning message.
+   */
+  warn(message: string, meta?: Record<string, unknown>): void {
+    if (this.level >= LogLevel.Info) {
+      const metaStr = meta ? ` ${JSON.stringify(meta)}` : '';
+      console.warn(`[ts-remote:warn] ${message}${metaStr}`);
+    }
+  }
+
+  /**
    * Log detailed debug message.
    */
   debug(message: string, meta?: Record<string, unknown>): void {

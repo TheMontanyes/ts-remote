@@ -3,10 +3,12 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import https from 'node:https';
 import ts from 'typescript';
 import { TsRemotePlugin } from '../plugin';
 import { CacheManager } from '../../fetcher/cache';
 import { Logger, LogLevel } from '../../shared/logger';
+import { generateTestCerts } from '../../fetcher/__test__/test-certs';
 
 let tmpDir: string;
 
@@ -195,6 +197,72 @@ describe('TsRemotePlugin', () => {
       const files = TsRemotePlugin.getExternalFilesForProject(unknownProject);
       assert.deepStrictEqual(files, []);
     });
+  });
+
+  it('constructs without error when the tls config is invalid', () => {
+    const info = createMockInfo(
+      {
+        remotes: { 'my-app': 'https://cdn.example.com/types.d.ts' },
+        tls: { ca: './missing-ca.pem' },
+      },
+      tmpDir,
+    );
+
+    assert.doesNotThrow(() => new TsRemotePlugin(ts, info));
+  });
+
+  it('background fetch honors the tls config (mutual TLS)', async () => {
+    generateTestCerts(tmpDir);
+    const caCert = fs.readFileSync(path.join(tmpDir, 'ca-cert.pem'));
+
+    const server = https.createServer(
+      {
+        cert: fs.readFileSync(path.join(tmpDir, 'server-cert.pem')),
+        key: fs.readFileSync(path.join(tmpDir, 'server-key.pem')),
+        ca: caCert,
+        requestCert: true,
+        rejectUnauthorized: true,
+      },
+      (_req, res) => {
+        res.writeHead(200);
+        res.end('declare module "my-app" { export const fromMtls: boolean; }');
+      },
+    );
+
+    const url = await new Promise<string>((resolve) => {
+      server.listen(0, '127.0.0.1', () => {
+        const addr = server.address() as { port: number };
+        resolve(`https://127.0.0.1:${addr.port}/types.d.ts`);
+      });
+    });
+
+    try {
+      const info = createMockInfo(
+        {
+          remotes: { 'my-app': url },
+          tls: {
+            ca: './ca-cert.pem',
+            cert: './client-cert.pem',
+            key: './client-key.pem',
+          },
+        },
+        tmpDir,
+      );
+
+      new TsRemotePlugin(ts, info);
+
+      // The fetch is fire-and-forget — poll the cache until it lands
+      const cachedPath = path.join(tmpDir, 'node_modules/.ts-remote/my-app.d.ts');
+      const deadline = Date.now() + 5000;
+      while (!fs.existsSync(cachedPath) && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+
+      assert.ok(fs.existsSync(cachedPath), 'expected background fetch to cache the remote');
+      assert.match(fs.readFileSync(cachedPath, 'utf-8'), /fromMtls/);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
   });
 
   it('uses custom cacheDir from config', () => {

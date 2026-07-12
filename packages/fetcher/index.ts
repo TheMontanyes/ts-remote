@@ -5,5 +5,6 @@ export type {
   FetcherOptions,
   FetchResult,
   RemoteMap,
+  TlsOptions,
   TsRemotePluginConfig,
 } from './contract-public';

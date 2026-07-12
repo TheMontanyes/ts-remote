@@ -9,6 +9,30 @@ import { LogLevel } from '../shared/logger';
 export type RemoteMap = Record<string, string>;
 
 /**
+ * TLS options for HTTPS requests, forwarded to Node's `https` client.
+ *
+ * Use this when a remote requires a client certificate (mutual TLS) or a
+ * custom/self-signed CA that isn't in Node's default trust store.
+ */
+export type TlsOptions = {
+  /** Trusted CA certificate(s), added to (not replacing) Node's default trust store. */
+  ca?: string | Buffer | Array<string | Buffer>;
+  /** Client certificate for mutual TLS. */
+  cert?: string | Buffer;
+  /** Private key matching `cert`. */
+  key?: string | Buffer;
+  /** PKCS#12 certificate/key bundle, as an alternative to `cert`/`key`. */
+  pfx?: string | Buffer;
+  /** Passphrase for `key` or `pfx`. */
+  passphrase?: string;
+  /**
+   * Verify the server's certificate against trusted CAs.
+   * @default true
+   */
+  rejectUnauthorized?: boolean;
+};
+
+/**
  * Options for the fetcher.
  */
 export type FetcherOptions = {
@@ -52,10 +76,36 @@ export type FetcherOptions = {
   timeout?: number;
 
   /**
+   * Maximum number of redirects to follow per request.
+   * @default 5
+   */
+  maxRedirects?: number;
+
+  /**
    * Log level for output verbosity.
    * @default LogLevel.Info
    */
   logLevel?: LogLevel;
+
+  /**
+   * TLS options for HTTPS requests (client certificates, custom CA, etc).
+   */
+  tls?: TlsOptions;
+
+  /**
+   * Extra request headers, e.g. an `Authorization` token for a private host.
+   *
+   * `Authorization`, `Cookie` and `Proxy-Authorization` are dropped when a
+   * redirect leaves the original origin, so credentials can't leak.
+   */
+  headers?: Record<string, string>;
+
+  /**
+   * When a fetch fails and an expired cached copy exists on disk, fall back
+   * to the stale copy (with a warning) instead of throwing.
+   * @default true
+   */
+  staleIfError?: boolean;
 };
 
 /**
@@ -70,6 +120,8 @@ export type FetchResult = {
   cachedPath: string;
   /** Whether it was served from cache (true) or freshly fetched (false) */
   fromCache: boolean;
+  /** True when the fetch failed and an expired cached copy was used instead */
+  stale?: boolean;
 };
 
 /**
@@ -80,4 +132,6 @@ export type TsRemotePluginConfig = {
   remotes: RemoteMap;
   cacheDir?: string;
   cacheTTL?: number;
+  tls?: TlsOptions;
+  headers?: Record<string, string>;
 };
