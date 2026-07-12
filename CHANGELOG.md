@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Fetcher**: Remotes are fetched in parallel; `maxRedirects` is exposed on `FetcherOptions`; `303 See Other` redirects are followed; responses that are empty or look like an HTML error page are rejected instead of being cached as `.d.ts`.
 - **Plugin**: The background refresh now shares the fetcher's full pipeline (`fetchOne`) — retries with backoff, ETag revalidation and stale-if-error included — with per-remote error isolation, instead of a single bare HTTP attempt per remote.
 - **Packaging**: Declared `"engines": { "node": ">=18" }` in `package.json` (and included it in the published package), backing the Node requirement already stated in the README.
+- **Builder**: `additionalDeclarations` now actually concatenates the files into the generated output, as the docs always promised — previously they only fed the compilation environment, so emitted types could reference globals (e.g. a `Window` augmentation) the consumer never received. Content is appended verbatim at the top of the output, before the module blocks, keeping top-level `declare` statements intact.
+- **Builder**: `additionalDeclarations` entries can be `{ filename, emit: false }` for environment-only declarations — visible to the compiler while generating types, but not shipped in the output. The `AdditionalDeclaration` type is exported from `ts-remote/builder`.
+- **Builder**: `additionalDeclarations` validation — non-`.d.ts` paths are rejected; a missing file fails loudly up front (even in `emit: false` mode, where the compiler would otherwise silently type against an environment that isn't there); a module-form file (top-level `import`/`export`, e.g. `export {}` with `declare global`) is rejected for concatenation with a hint to use script form or `emit: false`, since it would silently turn the whole output into a module and strip its globals.
 
 ## [2.1.1] - 2026-06-28
 

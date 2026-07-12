@@ -41,4 +41,10 @@
 
 export { default } from './build';
 export { DeclarationVariant } from './contract-public';
-export type { BuilderOptions, DeclarationEntry, ModuleName, ImportPath } from './contract-public';
+export type {
+  AdditionalDeclaration,
+  BuilderOptions,
+  DeclarationEntry,
+  ModuleName,
+  ImportPath,
+} from './contract-public';

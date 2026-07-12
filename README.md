@@ -141,7 +141,7 @@ declare namespace MyLib {
 | `output.filename` | `string` | `@types/types.d.ts` | Output file path |
 | `output.format` | `(result: string) => string \| Promise<string>` | `(x) => x` | Post-processor for the output (e.g. Prettier) |
 | `tsconfig` | `string` | `tsconfig.json` | Path to the producer's tsconfig |
-| `additionalDeclarations` | `string[]` | `[]` | Extra `.d.ts` files to include for ambient context / concatenation |
+| `additionalDeclarations` | `AdditionalDeclaration[]` | `[]` | Extra `.d.ts` files for ambient context and (by default) concatenation into the output |
 
 ```typescript
 type DeclarationEntry = {
@@ -149,7 +149,43 @@ type DeclarationEntry = {
   filename: string;             // entry source file
   variant?: DeclarationVariant; // Module (default) | Namespace
 };
+
+type AdditionalDeclaration =
+  | string                                    // path to a .d.ts: environment + shipped in the output
+  | { filename: string; emit?: boolean };     // emit: false → environment-only, not shipped
 ```
+
+### Global declarations
+
+If your source relies on global ambient types — say a `Window` augmentation — pass the `.d.ts` via `additionalDeclarations`. The file becomes part of the compilation environment (so the emitted types resolve correctly) **and** its content is concatenated verbatim at the top of the output, so consumers receive the globals too:
+
+```typescript
+// global.d.ts
+interface Bar { baz: string; }
+interface Window { foo: Bar; }
+
+// getBar.ts
+export const getBar = () => window.foo;
+```
+
+```typescript
+await build({
+  entries: [{ name: 'my-app', filename: './src/getBar.ts' }],
+  additionalDeclarations: ['./src/global.d.ts'],
+});
+```
+
+```typescript
+// output: globals first, then the module blocks
+interface Bar { baz: string; }
+interface Window { foo: Bar; }
+declare module 'my-app' {
+  const getBar: () => Bar; // ✅ Bar resolves on the consumer side
+  export { getBar };
+}
+```
+
+Without `additionalDeclarations` the compiler wouldn't see `global.d.ts` at all (the program is built from the entry files only) and `getBar` would degrade to `() => any`. Use `{ filename, emit: false }` for declarations that are needed to compile but shouldn't be shipped — e.g. environment types the consumer is guaranteed to have already.
 
 ---
 

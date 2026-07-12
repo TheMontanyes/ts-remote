@@ -33,6 +33,29 @@ export type DeclarationEntry = {
   variant?: DeclarationVariant;
 };
 
+/**
+ * An additional `.d.ts` file for the build.
+ *
+ * A plain string (or `emit: true`, the default) makes the file part of the
+ * compilation environment AND concatenates its content verbatim into the
+ * generated output — use this for global declarations (e.g. `interface Window`
+ * augmentations) that the emitted types reference, so consumers receive them.
+ *
+ * `emit: false` makes the file environment-only: visible to the compiler
+ * while generating declarations, but not shipped in the output.
+ */
+export type AdditionalDeclaration =
+  | ImportPath
+  | {
+      /** Path to the `.d.ts` file */
+      filename: ImportPath;
+      /**
+       * Include the file's content in the generated output.
+       * @default true
+       */
+      emit?: boolean;
+    };
+
 export type BuilderOptions = {
   /**
    * Array of module declarations to compile.
@@ -50,9 +73,10 @@ export type BuilderOptions = {
    */
   entries: DeclarationEntry[];
   /**
-   * d.ts files required for environment and concatenation with output.filename
+   * `.d.ts` files required for the compilation environment and (unless
+   * `emit: false`) concatenated into the generated output.
    * */
-  additionalDeclarations?: string[];
+  additionalDeclarations?: AdditionalDeclaration[];
   output?: {
     /**
      * The path to the compiled file

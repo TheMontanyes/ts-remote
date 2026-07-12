@@ -6,6 +6,7 @@ import { validateExtension } from './validate-extension';
 import { getCompilerOptions } from './get-compiler-options';
 import { Emitter } from './emitter';
 import {
+  BuilderError,
   DuplicateFilenameError,
   DuplicateModuleError,
   EmitFailedError,
@@ -23,6 +24,51 @@ export default async function main(options: BuilderOptions) {
   const config = tsconfig || baseTsConfigPath;
   const outputFormat = output?.format || baseOutputFormat;
   const outputPath = output?.filename || baseOutputPath;
+
+  const additional = additionalDeclarations.map((decl) =>
+    typeof decl === 'string'
+      ? { filename: decl, emit: true }
+      : { filename: decl.filename, emit: decl.emit ?? true },
+  );
+
+  // Validate and read additional declarations up front — a missing file must
+  // fail loudly even in emit:false mode, where the compiler would otherwise
+  // silently type against an environment that isn't there.
+  const globalsContent: string[] = [];
+
+  for (const { filename, emit } of additional) {
+    if (!filename.endsWith('.d.ts')) {
+      throw new BuilderError(
+        `additionalDeclarations must be .d.ts files, got: ${filename}. ` +
+          'Source files belong in "entries".',
+      );
+    }
+
+    const text = ts.sys.readFile(filename);
+
+    if (text === undefined) {
+      throw new SourceFileNotFoundError(filename);
+    }
+
+    if (!emit) {
+      continue;
+    }
+
+    // A module-form file (top-level import/export, e.g. `export {}` with
+    // `declare global`) would turn the whole concatenated output into a
+    // module and strip its globals of their global meaning.
+    const parsed = ts.createSourceFile(filename, text, ts.ScriptTarget.Latest, true);
+
+    if (ts.isExternalModule(parsed)) {
+      throw new BuilderError(
+        `additionalDeclarations file is a module and cannot be concatenated into the output: ${filename}. ` +
+          'Declare the globals at top level without import/export (script form), ' +
+          'or mark the file { emit: false } to keep it environment-only.',
+      );
+    }
+
+    globalsContent.push(text.replace(/^\uFEFF/, '').trimEnd());
+  }
 
   const compilerOptions: ts.CompilerOptions = getCompilerOptions(config, {
     outDir: undefined,
@@ -71,7 +117,7 @@ export default async function main(options: BuilderOptions) {
 
   const compilerHost = ts.createCompilerHost(compilerOptions);
   const program = ts.createProgram(
-    [...entryFiles, ...additionalDeclarations],
+    [...entryFiles, ...additional.map((d) => d.filename)],
     compilerOptions,
     compilerHost,
   );
@@ -130,8 +176,12 @@ export default async function main(options: BuilderOptions) {
   sharedEmitter.dispose();
 
   // Combine all modules and remove redundant 'declare' modifiers inside ambient contexts
-  const finalCode = modulesContent.join(ts.sys.newLine);
-  const cleanedCode = removeDeclareInAmbientContext(finalCode);
+  const modulesCode = removeDeclareInAmbientContext(modulesContent.join(ts.sys.newLine));
 
-  ts.sys.writeFile(outputPath, await outputFormat(cleanedCode), true);
+  // Emitted additional declarations go verbatim before the module blocks:
+  // they must stay top-level (and keep their `declare` modifiers) so the
+  // consumer's global scope picks them up.
+  const finalCode = [...globalsContent, modulesCode].join(ts.sys.newLine);
+
+  ts.sys.writeFile(outputPath, await outputFormat(finalCode), true);
 }

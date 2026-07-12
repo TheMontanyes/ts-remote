@@ -51,11 +51,22 @@ describe('e2e: builder → fetcher → plugin', () => {
     fs.mkdirSync(srcDir, { recursive: true });
 
     fs.writeFileSync(
+      path.join(srcDir, 'global.d.ts'),
+      `
+interface AppSettings {
+  locale: string;
+}
+
+declare var appSettings: AppSettings;
+`,
+    );
+
+    fs.writeFileSync(
       path.join(srcDir, 'index.ts'),
       `
 export interface User {
   id: string;
-  name: string;
+  name: string; 
 }
 
 export function getUser(id: string): Promise<User> {
@@ -66,6 +77,8 @@ export enum Role {
   Admin = 'admin',
   User = 'user',
 }
+
+export const getSettings = () => appSettings;
 `,
     );
 
@@ -75,6 +88,7 @@ export enum Role {
       entries: [{ name: 'test-app', filename: path.join(srcDir, 'index.ts') }],
       output: { filename: outputPath },
       tsconfig: path.resolve(process.cwd(), 'tsconfig.json'),
+      additionalDeclarations: [path.join(srcDir, 'global.d.ts')],
     });
 
     assert.ok(fs.existsSync(outputPath), 'Builder should create output .d.ts');
@@ -87,6 +101,15 @@ export enum Role {
     assert.ok(dtsContent.includes('User'), 'Output should contain User interface');
     assert.ok(dtsContent.includes('getUser'), 'Output should contain getUser function');
     assert.ok(dtsContent.includes('Role'), 'Output should contain Role enum');
+    assert.ok(
+      dtsContent.includes('interface AppSettings'),
+      'Output should ship the global declarations',
+    );
+    assert.match(
+      dtsContent,
+      /getSettings: \(\) => AppSettings/,
+      'Emitted types should resolve against the global declarations',
+    );
 
     // --- Step 2: Serve .d.ts via HTTP ---
 
@@ -112,6 +135,20 @@ export enum Role {
 
     const cachedContent = fs.readFileSync(results[0].cachedPath, 'utf-8');
     assert.equal(cachedContent, dtsContent, 'Cached content should match built .d.ts');
+
+    // The fetched file must remain a script (no top-level import/export):
+    // only then do its top-level declarations stay global for the consumer.
+    const cachedSourceFile = ts.createSourceFile(
+      results[0].cachedPath,
+      cachedContent,
+      ts.ScriptTarget.Latest,
+      true,
+    );
+    assert.equal(
+      ts.isExternalModule(cachedSourceFile),
+      false,
+      'Fetched .d.ts must be a script file so its globals apply in the consumer',
+    );
 
     // Verify manifest
     const manifest = JSON.parse(fs.readFileSync(path.join(cacheDir, 'manifest.json'), 'utf-8'));
